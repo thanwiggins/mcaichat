@@ -1,4 +1,4 @@
-package com.yourname.geminimod;
+package com.thanwiggins.mcaichat;
 
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -7,7 +7,7 @@ import net.minecraftforge.client.ConfigScreenHandler;
 
 @Mod(GeminiMod.MODID)
 public class GeminiMod {
-    public static final String MODID = "geminimod";
+    public static final String MODID = "mcaichat";
 
     public GeminiMod() {
         // Register the Client Config

@@ -1,4 +1,4 @@
-package com.yourname.geminimod;
+package com.thanwiggins.mcaichat;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
