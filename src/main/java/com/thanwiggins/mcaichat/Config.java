@@ -22,4 +22,15 @@ public class Config {
 
         SPEC = BUILDER.build();
     }
+    
+    public static boolean isWhitelisted(net.minecraft.world.entity.Entity entity) {
+        if (entity == null) return false;
+        String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
+        String whitelistStr = WHITELIST_ENTITIES.get();
+        if (whitelistStr == null || whitelistStr.isEmpty()) return false;
+        
+        return java.util.Arrays.stream(whitelistStr.split(","))
+                .map(String::trim)
+                .anyMatch(s -> s.equalsIgnoreCase(registryName));
+    }
 }

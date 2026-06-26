@@ -54,7 +54,9 @@ public class ChatInterceptor {
         }
 
         // Format the local echo to show who you are addressing
-        String entityName = targetEntity.getDisplayName().getString();
+        // Read their assigned name directly from their NBT data
+        String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
+        if (entityName.isEmpty()) entityName = targetEntity.getDisplayName().getString(); // fallback just in case
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
         
         // Fire the request to Gemini
@@ -71,14 +73,14 @@ public class ChatInterceptor {
         HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();
-            if (isWhitelisted(hitEntity)) {
+            if (Config.isWhitelisted(hitEntity)) {
                 return hitEntity;
             }
         }
 
         // 2. Try Proximity (8 block radius)
         AABB searchBox = player.getBoundingBox().inflate(8.0D);
-        List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, ChatInterceptor::isWhitelisted);
+        List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, Config::isWhitelisted);
 
         Entity closest = null;
         double closestDistance = Double.MAX_VALUE;
@@ -92,23 +94,5 @@ public class ChatInterceptor {
         }
 
         return closest;
-    }
-
-    /**
-     * Checks if the entity is allowed to be chatted with based on the config.
-     */
-    private static boolean isWhitelisted(Entity entity) {
-        if (entity == null) return false;
-        
-        // Gets the registry name (e.g. "minecraft:villager", "minecraft:zombie")
-        String registryName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
-        String whitelistStr = Config.WHITELIST_ENTITIES.get();
-        
-        if (whitelistStr == null || whitelistStr.isEmpty()) return false;
-
-        // Compare against the comma-separated list
-        return Arrays.stream(whitelistStr.split(","))
-                .map(String::trim)
-                .anyMatch(s -> s.equalsIgnoreCase(registryName));
     }
 }

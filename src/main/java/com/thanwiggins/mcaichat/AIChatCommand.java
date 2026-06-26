@@ -27,7 +27,6 @@ public class AIChatCommand {
                     // --- ADD COMMAND ---
                     .then(Commands.literal("add")
                         .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            // Suggests all vanilla/modded entities
                             .suggests(SuggestionProviders.SUMMONABLE_ENTITIES)
                             .executes(context -> {
                                 ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
@@ -49,7 +48,6 @@ public class AIChatCommand {
                     // --- REMOVE COMMAND ---
                     .then(Commands.literal("remove")
                         .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            // Custom suggestion: Only suggest entities currently on the whitelist
                             .suggests((context, builder) -> {
                                 String currentWhitelist = Config.WHITELIST_ENTITIES.get();
                                 if (currentWhitelist == null || currentWhitelist.isEmpty()) {
@@ -62,7 +60,6 @@ public class AIChatCommand {
                                 String currentWhitelist = Config.WHITELIST_ENTITIES.get();
                                 String removeEntityStr = entityId.toString();
 
-                                // Parse the list, remove the target, and stitch it back together
                                 List<String> entities = Arrays.stream(currentWhitelist.split(","))
                                         .map(String::trim)
                                         .collect(Collectors.toList());
@@ -79,7 +76,6 @@ public class AIChatCommand {
                             })
                         )
                     )
-                    
                 )
         );
     }
