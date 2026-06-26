@@ -15,7 +15,7 @@ public class ChatInterceptor {
         String message = event.getMessage();
 
         // Check if the player typed our command
-        if (message.startsWith("/chat ")) {
+        if (message.startsWith("!chat ")) {
             event.setCanceled(true); // Stop the message from going to the server
             String prompt = message.substring(6); // Remove "/chat "
 
