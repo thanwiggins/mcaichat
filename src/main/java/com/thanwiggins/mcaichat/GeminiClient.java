@@ -18,7 +18,7 @@ public class GeminiClient {
     public static void sendMessage(String apiKey, String prompt) {
         CompletableFuture.runAsync(() -> {
             try {
-                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey;
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
                 // Build the JSON Payload
                 JsonObject textPart = new JsonObject();
