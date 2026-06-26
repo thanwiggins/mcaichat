@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
 public class GeminiClient {
     private static final HttpClient client = HttpClient.newHttpClient();
 
-    public static void sendMessage(String apiKey, String prompt) {
+    public static void sendMessage(String apiKey, String prompt, String entityName) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
@@ -54,7 +54,7 @@ public class GeminiClient {
                                 .get(0).getAsJsonObject()
                                 .get("text").getAsString();
 
-                        Minecraft.getInstance().player.sendSystemMessage(Component.literal("§b[Gemini]: §f" + reply.trim()));
+                        Minecraft.getInstance().player.sendSystemMessage(Component.literal("§b[" + entityName + "]: §f" + reply.trim()));
                     } else {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode()));
                     }

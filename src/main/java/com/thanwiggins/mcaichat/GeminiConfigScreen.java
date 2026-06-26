@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 public class GeminiConfigScreen extends Screen {
     private final Screen previous;
     private EditBox apiKeyBox;
+    private EditBox whitelistBox;
 
     public GeminiConfigScreen(Screen previous) {
         super(Component.literal("Gemini API Configuration"));
@@ -18,26 +19,36 @@ public class GeminiConfigScreen extends Screen {
     @Override
     protected void init() {
         int x = this.width / 2 - 100;
-        int y = this.height / 2 - 20;
+        int y = this.height / 2 - 40; // Shifted up to make room for two boxes
 
-        // Create the text input box
+        // Create the API Key box
         this.apiKeyBox = new EditBox(this.font, x, y, 200, 20, Component.literal("API Key"));
         this.apiKeyBox.setMaxLength(200);
         this.apiKeyBox.setValue(Config.API_KEY.get());
         this.addRenderableWidget(this.apiKeyBox);
 
+        // Create the Whitelist box
+        this.whitelistBox = new EditBox(this.font, x, y + 40, 200, 20, Component.literal("Whitelist"));
+        this.whitelistBox.setMaxLength(500);
+        this.whitelistBox.setValue(Config.WHITELIST_ENTITIES.get());
+        this.addRenderableWidget(this.whitelistBox);
+
         // Create the Save button
         this.addRenderableWidget(Button.builder(Component.literal("Save & Close"), button -> {
             Config.API_KEY.set(this.apiKeyBox.getValue());
+            Config.WHITELIST_ENTITIES.set(this.whitelistBox.getValue());
             this.minecraft.setScreen(this.previous);
-        }).bounds(x, y + 30, 200, 20).build());
+        }).bounds(x, y + 70, 200, 20).build());
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics);
         guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
-        guiGraphics.drawString(this.font, Component.literal("Paste your Gemini API Key:"), this.width / 2 - 100, this.height / 2 - 35, 0xA0A0A0);
+        
+        guiGraphics.drawString(this.font, Component.literal("Paste your Gemini API Key:"), this.width / 2 - 100, this.height / 2 - 55, 0xA0A0A0);
+        guiGraphics.drawString(this.font, Component.literal("Whitelisted Entities (comma separated):"), this.width / 2 - 100, this.height / 2 - 15, 0xA0A0A0);
+        
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 }
