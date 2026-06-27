@@ -16,5 +16,7 @@ public class GeminiMod {
         // Register the Config GUI to the Forge Mods Menu
         ModLoadingContext.get().registerExtensionPoint(ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory((mc, screen) -> new GeminiConfigScreen(screen)));
+        
+        NetworkHandler.register();
     }
 }

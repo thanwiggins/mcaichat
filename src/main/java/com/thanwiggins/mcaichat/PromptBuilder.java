@@ -122,12 +122,26 @@ public class PromptBuilder {
     }
 
     private static String buildWorldKnowledge(Level level, BlockPos pos) {
-        // TODO for Phase 4: Query SavedData for Lore and nearest structures
-        String knowledge = "Home: Unknown\nNearby Structures: Unknown";
+        String knowledge = "Home: Unknown\n";
+        
+        // --- PHASE 4: DYNAMIC LORE INJECTION ---
+        String currentStructId = ClientLoreManager.currentStructureId;
+        
+        if (!currentStructId.equals("none")) {
+            ClientLoreManager.StructureLore lore = ClientLoreManager.getLore(currentStructId);
+            if (lore != null) {
+                knowledge += "Nearby Location: " + lore.name + " (" + lore.type + " structure)\n";
+                knowledge += "Local Lore/History: " + lore.background;
+            } else {
+                knowledge += "Nearby Location: A recently discovered structure (history currently unknown).";
+            }
+        } else {
+            knowledge += "Nearby Structures: None in the immediate vicinity.";
+        }
         
         // 5% chance to know about a secret structure
-        if (new Random().nextInt(100) < 5) {
-            knowledge += "\nSecret: You have heard rumors of a dangerous hidden structure nearby.";
+        if (new java.util.Random().nextInt(100) < 5) {
+            knowledge += "\nSecret: You have heard rumors of a dangerous hidden structure far away.";
         }
         
         return knowledge;

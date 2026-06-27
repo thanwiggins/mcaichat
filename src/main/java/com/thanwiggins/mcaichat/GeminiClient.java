@@ -20,10 +20,8 @@ public class GeminiClient {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
-                // --- Build the JSON Payload ---
                 JsonObject body = new JsonObject();
                 
-                // 1. System Instruction (The Context & Rules)
                 JsonObject systemInstruction = new JsonObject();
                 JsonObject sysParts = new JsonObject();
                 sysParts.addProperty("text", systemPrompt);
@@ -32,7 +30,6 @@ public class GeminiClient {
                 systemInstruction.add("parts", sysPartsArray);
                 body.add("system_instruction", systemInstruction);
 
-                // 2. User Message (The Chat)
                 JsonObject textPart = new JsonObject();
                 textPart.addProperty("text", userMessage);
                 JsonArray parts = new JsonArray();
@@ -44,7 +41,6 @@ public class GeminiClient {
                 contents.add(content);
                 body.add("contents", contents);
 
-                // Send the HTTP POST Request
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
                         .header("Content-Type", "application/json")
@@ -53,7 +49,6 @@ public class GeminiClient {
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
-                // Parse the response back into the Minecraft Main Thread
                 Minecraft.getInstance().execute(() -> {
                     if (Minecraft.getInstance().player == null) return;
 
@@ -78,6 +73,60 @@ public class GeminiClient {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: " + e.getMessage()));
                     }
                 });
+            }
+        });
+    }
+
+    // --- NEW METHOD: Background Lore Generation ---
+    // --- NEW METHOD: Background Lore Generation ---
+    public static void generateStructureLore(String apiKey, String structureId, String structureType, String structureName, String category, String biome) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
+
+                // Added the Biome injection to the prompt!
+                String prompt = "You are a worldbuilding assistant for Minecraft. Generate a 2-3 sentence historical background or lore for a " 
+                        + category + " structure of type '" + structureType + "' named '" + structureName + "', located in a " + biome + " biome. "
+                        + "Make it fit naturally into a fantasy Minecraft world. Do not use markdown or formatting, just plain text.";
+
+                JsonObject body = new JsonObject();
+                JsonObject textPart = new JsonObject();
+                textPart.addProperty("text", prompt);
+                JsonArray parts = new JsonArray();
+                parts.add(textPart);
+                JsonObject content = new JsonObject();
+                content.addProperty("role", "user");
+                content.add("parts", parts);
+                JsonArray contents = new JsonArray();
+                contents.add(content);
+                body.add("contents", contents);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonObject jsonResponse = JsonParser.parseString(response.body()).getAsJsonObject();
+                    String generatedLore = jsonResponse.getAsJsonArray("candidates")
+                            .get(0).getAsJsonObject()
+                            .getAsJsonObject("content")
+                            .getAsJsonArray("parts")
+                            .get(0).getAsJsonObject()
+                            .get("text").getAsString().trim();
+
+                    // Instantly save it to the map when it arrives!
+                    ClientLoreManager.addLore(structureId, structureName, generatedLore, category);
+                    System.out.println("[MC-AI Chat] Generated new lore for " + structureName + "!");
+                } else {
+                    ClientLoreManager.addLore(structureId, structureName, "A mysterious place with an unknown history.", category);
+                }
+            } catch (Exception e) {
+                System.err.println("[MC-AI Chat] Lore generation failed: " + e.getMessage());
+                ClientLoreManager.addLore(structureId, structureName, "A mysterious place with an unknown history.", category);
             }
         });
     }

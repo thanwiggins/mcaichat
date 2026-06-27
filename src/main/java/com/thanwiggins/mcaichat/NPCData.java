@@ -11,24 +11,22 @@ import java.util.Random;
 public class NPCData {
     public static final List<String> NAMES = new ArrayList<>();
     public static final List<String> PERSONALITIES = new ArrayList<>();
+    public static final List<String> REALMS = new ArrayList<>(); // Added Realms list
 
-    // This static block runs once when the mod starts up
     static {
         loadListFromFile("/assets/mcaichat/Names.csv", NAMES, "Alex");
         loadListFromFile("/assets/mcaichat/Personalities.csv", PERSONALITIES, "Mysterious and quiet.");
+        loadListFromFile("/assets/mcaichat/Realms.csv", REALMS, "Oakhaven"); // Added Realms loader
     }
 
     private static void loadListFromFile(String path, List<String> list, String fallback) {
         try {
-            // Read the file directly from the mod's bundled resources
             InputStream is = NPCData.class.getResourceAsStream(path);
-            
             if (is != null) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
-                    // Ignore empty lines or the word "#VALUE!" from bad excel exports
                     if (!line.isEmpty() && !line.equals("#VALUE!")) {
                         list.add(line);
                     }
@@ -53,5 +51,11 @@ public class NPCData {
     public static String getRandomPersonality(Random random) {
         if (PERSONALITIES.isEmpty()) return "Blank slate.";
         return PERSONALITIES.get(random.nextInt(PERSONALITIES.size()));
+    }
+
+    // Added Realms getter
+    public static String getRandomRealm(Random random) {
+        if (REALMS.isEmpty()) return "Unknown Realm";
+        return REALMS.get(random.nextInt(REALMS.size()));
     }
 }
