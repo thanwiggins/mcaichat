@@ -15,21 +15,33 @@ import java.util.concurrent.CompletableFuture;
 public class GeminiClient {
     private static final HttpClient client = HttpClient.newHttpClient();
 
-    public static void sendMessage(String apiKey, String prompt, String entityName) {
+    public static void sendMessage(String apiKey, String systemPrompt, String userMessage, String entityName) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
-                // Build the JSON Payload
+                // --- Build the JSON Payload ---
+                JsonObject body = new JsonObject();
+                
+                // 1. System Instruction (The Context & Rules)
+                JsonObject systemInstruction = new JsonObject();
+                JsonObject sysParts = new JsonObject();
+                sysParts.addProperty("text", systemPrompt);
+                JsonArray sysPartsArray = new JsonArray();
+                sysPartsArray.add(sysParts);
+                systemInstruction.add("parts", sysPartsArray);
+                body.add("system_instruction", systemInstruction);
+
+                // 2. User Message (The Chat)
                 JsonObject textPart = new JsonObject();
-                textPart.addProperty("text", prompt);
+                textPart.addProperty("text", userMessage);
                 JsonArray parts = new JsonArray();
                 parts.add(textPart);
                 JsonObject content = new JsonObject();
+                content.addProperty("role", "user");
                 content.add("parts", parts);
                 JsonArray contents = new JsonArray();
                 contents.add(content);
-                JsonObject body = new JsonObject();
                 body.add("contents", contents);
 
                 // Send the HTTP POST Request
@@ -56,7 +68,7 @@ public class GeminiClient {
 
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§b[" + entityName + "]: §f" + reply.trim()));
                     } else {
-                        Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode()));
+                        Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode() + " - " + response.body()));
                     }
                 });
 

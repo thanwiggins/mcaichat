@@ -19,6 +19,10 @@ import java.util.List;
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, value = Dist.CLIENT)
 public class ChatInterceptor {
 
+    // Add these variables to store the last sent prompt
+    public static String lastSystemPrompt = "No prompt sent yet.";
+    public static String lastUserMessage = "No message sent yet.";
+
     @SubscribeEvent
     public static void onClientChat(ClientChatEvent event) {
         String message = event.getMessage();
@@ -53,14 +57,20 @@ public class ChatInterceptor {
             return;
         }
 
-        // Format the local echo to show who you are addressing
         // Read their assigned name directly from their NBT data
         String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
         if (entityName.isEmpty()) entityName = targetEntity.getDisplayName().getString(); // fallback just in case
+        
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
         
+        // Build the dynamic System Prompt
+        String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity);
+        
+        lastSystemPrompt = systemPrompt;
+        lastUserMessage = message;
+
         // Fire the request to Gemini
-        GeminiClient.sendMessage(apiKey, message, entityName);
+        GeminiClient.sendMessage(apiKey, systemPrompt, message, entityName);
     }
 
     /**
