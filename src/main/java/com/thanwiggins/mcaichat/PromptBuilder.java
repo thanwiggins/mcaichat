@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Monster;
@@ -23,6 +24,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 public class PromptBuilder {
     private static final File PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_prompt.txt").toFile();
@@ -211,14 +213,29 @@ public class PromptBuilder {
         }
         
         // Nearby Monsters (Filter out any whitelisted chat entities)
-        AABB dangerBox = target.getBoundingBox().inflate(15.0D);
+        AABB dangerBox = target.getBoundingBox().inflate(5.0D);
         List<Monster> monsters = level.getEntitiesOfClass(Monster.class, dangerBox, entity -> !Config.isWhitelisted(entity));
         
         if (!monsters.isEmpty()) {
-            String monsterNameRaw = monsters.get(0).getDisplayName().getString();
-            exigent.append("There are hostile monsters nearby (").append(monsterNameRaw).append(")! ");
+            // Get all names, remove duplicates, and join with a comma
+            String monsterNames = monsters.stream()
+                    .map(m -> m.getDisplayName().getString())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            exigent.append("There are hostile monsters nearby (").append(monsterNames).append(")! ");
         }
 
+        // Nearby Animals (Excluding the target itself if they are an animal)
+        List<Animal> animals = level.getEntitiesOfClass(Animal.class, dangerBox, entity -> entity != target);
+        if (!animals.isEmpty()) {
+            // Get all names, remove duplicates, and join with a comma
+            String animalNames = animals.stream()
+                    .map(a -> a.getDisplayName().getString())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            exigent.append("There are animals nearby (").append(animalNames).append("). ");
+        }
+        
         if (target instanceof LivingEntity livingTarget) {
             // Entity Health Check
             float currentHealth = livingTarget.getHealth();
