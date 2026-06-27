@@ -216,8 +216,33 @@ public class PromptBuilder {
             }
         }
 
-        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s\nMemory: None (First interaction with the player)", 
-                name, entityType, personality, sentiment, capability);
+        // Fetch Conversation Memory
+        ClientMemoryManager.EntityMemory mem = ClientMemoryManager.getMemory(target.getUUID());
+        String memoryStr = "None (First interaction with the player)";
+        String timeElapsedStr = "N/A";
+
+        if (mem != null) {
+            memoryStr = mem.summary;
+            
+            // Calculate time purely based on Minecraft game ticks
+            long currentTick = player.level().getGameTime();
+            long diffTicks = currentTick - mem.lastConvoTick;
+            
+            // 1 in-game hour = 1000 ticks. 1 in-game day = 24000 ticks.
+            long inGameHours = diffTicks / 1000;
+            long inGameDays = diffTicks / 24000;
+            
+            if (diffTicks < 1000) {
+                timeElapsedStr = "Moments ago";
+            } else if (inGameDays < 1) {
+                timeElapsedStr = inGameHours + " in-game hours ago";
+            } else {
+                timeElapsedStr = inGameDays + " in-game days ago";
+            }
+        }
+
+        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s\nMemory: %s\nTime Since Last Conversation: %s", 
+                name, entityType, personality, sentiment, capability, memoryStr, timeElapsedStr);
     }
 
     private static String buildExigentCircumstances(Level level, Player player, Entity target) {

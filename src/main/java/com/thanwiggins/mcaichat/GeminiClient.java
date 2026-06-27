@@ -2,6 +2,7 @@ package com.thanwiggins.mcaichat;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonParser;
@@ -15,13 +16,12 @@ import java.util.concurrent.CompletableFuture;
 public class GeminiClient {
     private static final HttpClient client = HttpClient.newHttpClient();
 
-    public static void sendMessage(String apiKey, String systemPrompt, String userMessage, String entityName) {
+    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, long currentTick) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
                 JsonObject body = new JsonObject();
-                
                 JsonObject systemInstruction = new JsonObject();
                 JsonObject sysParts = new JsonObject();
                 sysParts.addProperty("text", systemPrompt);
@@ -30,16 +30,8 @@ public class GeminiClient {
                 systemInstruction.add("parts", sysPartsArray);
                 body.add("system_instruction", systemInstruction);
 
-                JsonObject textPart = new JsonObject();
-                textPart.addProperty("text", userMessage);
-                JsonArray parts = new JsonArray();
-                parts.add(textPart);
-                JsonObject content = new JsonObject();
-                content.addProperty("role", "user");
-                content.add("parts", parts);
-                JsonArray contents = new JsonArray();
-                contents.add(content);
-                body.add("contents", contents);
+                // Pass the entire history array to the contents
+                body.add("contents", history);
 
                 HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
@@ -61,18 +53,79 @@ public class GeminiClient {
                                 .get(0).getAsJsonObject()
                                 .get("text").getAsString();
 
+                        // Add the model's reply to the history using the current game tick
+                        ConversationManager.addMessage("model", reply, Minecraft.getInstance().level.getGameTime());
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§b[" + entityName + "]: §f" + reply.trim()));
                     } else {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode() + " - " + response.body()));
                     }
                 });
-
             } catch (Exception e) {
                 Minecraft.getInstance().execute(() -> {
                     if (Minecraft.getInstance().player != null) {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: " + e.getMessage()));
                     }
                 });
+            }
+        });
+    }
+
+    public static void initiateConversation(String apiKey, String systemPrompt, String entityName, long currentTick) {
+        ConversationManager.addMessage("user", "Please initiate a conversation with me naturally. Say hello!", currentTick);
+        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, currentTick);
+    }
+
+    public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                ClientMemoryManager.EntityMemory oldMem = ClientMemoryManager.getMemory(entity.getUUID());
+                String memoryContext = oldMem != null ? oldMem.summary : "No prior memories.";
+
+                StringBuilder rawHistory = new StringBuilder();
+                for (int i = 0; i < historyArray.size(); i++) {
+                    JsonObject msg = historyArray.get(i).getAsJsonObject();
+                    String role = msg.get("role").getAsString();
+                    String text = msg.getAsJsonArray("parts").get(0).getAsJsonObject().get("text").getAsString();
+                    rawHistory.append(role.equals("user") ? "Player: " : "AI: ").append(text).append("\n");
+                }
+
+                String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
+                String prompt = "Summarize the following conversation in 2-3 sentences. Focus on what happened, what you learned about the player, and important details to remember for next time. Combine it with the Previous Memory if relevant.\n\nPrevious Memory: " + memoryContext + "\n\nConversation:\n" + rawHistory.toString();
+
+                JsonObject body = new JsonObject();
+                JsonObject textPart = new JsonObject();
+                textPart.addProperty("text", prompt);
+                JsonArray parts = new JsonArray();
+                parts.add(textPart);
+                JsonObject content = new JsonObject();
+                content.addProperty("role", "user");
+                content.add("parts", parts);
+                JsonArray contents = new JsonArray();
+                contents.add(content);
+                body.add("contents", contents);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    JsonObject jsonResponse = JsonParser.parseString(response.body()).getAsJsonObject();
+                    String summary = jsonResponse.getAsJsonArray("candidates")
+                            .get(0).getAsJsonObject()
+                            .getAsJsonObject("content")
+                            .getAsJsonArray("parts")
+                            .get(0).getAsJsonObject()
+                            .get("text").getAsString().trim();
+
+                    // Save the memory tagged with the tick the conversation ended
+                    ClientMemoryManager.updateMemory(entity.getUUID(), summary, currentTick);
+                }
+            } catch (Exception e) {
+                System.err.println("[MC-AI Chat] Memory summarization failed: " + e.getMessage());
             }
         });
     }
