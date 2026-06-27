@@ -97,6 +97,59 @@ public class AIChatCommand {
                         )
                     )
                 )
+
+                // --- BLACKLIST COMMANDS ---
+                .then(Commands.literal("blacklist")
+                    .then(Commands.literal("add")
+                        .then(Commands.argument("entity", ResourceLocationArgument.id())
+                            .suggests(SuggestionProviders.SUMMONABLE_ENTITIES)
+                            .executes(context -> {
+                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
+                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
+                                String newEntityStr = entityId.toString();
+
+                                if (!currentBlacklist.contains(newEntityStr)) {
+                                    String updatedList = currentBlacklist.isEmpty() ? newEntityStr : currentBlacklist + "," + newEntityStr;
+                                    Config.BLACKLIST_ENTITIES.set(updatedList);
+                                    context.getSource().sendSystemMessage(Component.literal("§aAdded " + newEntityStr + " to the AI Chat blacklist!"));
+                                } else {
+                                    context.getSource().sendSystemMessage(Component.literal("§c" + newEntityStr + " is already blacklisted."));
+                                }
+                                return 1;
+                            })
+                        )
+                    )
+                    .then(Commands.literal("remove")
+                        .then(Commands.argument("entity", ResourceLocationArgument.id())
+                            .suggests((context, builder) -> {
+                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
+                                if (currentBlacklist == null || currentBlacklist.isEmpty()) {
+                                    return builder.buildFuture();
+                                }
+                                return SharedSuggestionProvider.suggest(Arrays.stream(currentBlacklist.split(",")).map(String::trim), builder);
+                            })
+                            .executes(context -> {
+                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
+                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
+                                String removeEntityStr = entityId.toString();
+
+                                List<String> entities = Arrays.stream(currentBlacklist.split(","))
+                                        .map(String::trim)
+                                        .collect(Collectors.toList());
+
+                                if (entities.contains(removeEntityStr)) {
+                                    entities.remove(removeEntityStr);
+                                    String updatedList = String.join(",", entities);
+                                    Config.BLACKLIST_ENTITIES.set(updatedList);
+                                    context.getSource().sendSystemMessage(Component.literal("§eRemoved " + removeEntityStr + " from the AI Chat blacklist."));
+                                } else {
+                                    context.getSource().sendSystemMessage(Component.literal("§c" + removeEntityStr + " is not in the blacklist."));
+                                }
+                                return 1;
+                            })
+                        )
+                    )
+                )
         );
     }
 }

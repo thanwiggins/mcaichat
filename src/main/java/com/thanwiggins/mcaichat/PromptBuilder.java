@@ -6,6 +6,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Monster;
@@ -143,28 +144,31 @@ public class PromptBuilder {
         }
         
         // Capitalize the Entity Type
-        String entityTypeRaw = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).getPath();
-        String entityType = formatName(entityTypeRaw);
-        
-        // Capabilities and Sentiment logic
-        boolean isMonster = target instanceof Monster;
-        String sentiment = isMonster ? "Hostile toward the player" : "Friendly toward the player";
-        String capability = isMonster ? "Trained Warrior - Has Fighting Abilities" : "Normal Citizen - No Fighting Abilities";
-
-        // --- VALARIAN CONQUEST INTEGRATION (Using Vanilla Scoreboard Teams) ---
         String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        if (targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier")) {
-            
-            capability = "Trained Warrior - Has Fighting Abilities"; // We know they can fight
-            
-            // Check if the entity is actually assigned to a faction (team)
+        String entityType = formatName(ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).getPath());
+        
+        // --- 1. Capability Logic ---
+        boolean isMonster = target instanceof Monster;
+        boolean isIronGolem = target instanceof IronGolem;
+        boolean isGuardVillager = targetRegistryName.equals("guardvillagers:guard");
+        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+        
+        // If they fall into ANY of these categories, they can fight
+        boolean isCapableFighter = isMonster || isIronGolem || isGuardVillager || isValarianFighter;
+        String capability = isCapableFighter ? "Trained Warrior - Has Fighting Abilities" : "Normal Citizen - No Fighting Abilities";
+
+        // --- 2. Base Sentiment Logic ---
+        // Defaults to hostile for monsters, friendly for everyone else (like Guards and Golems)
+        String sentiment = isMonster ? "Hostile toward the player (The player is a dangerous enemy that must be eliminated)" : "Friendly and welcoming toward the player";
+
+        // --- 3. VALARIAN CONQUEST INTEGRATION (Overrides base sentiment) ---
+        if (isValarianFighter) {
             if (target.getTeam() != null) {
                 String factionName = target.getTeam().getName();
-                
                 if (target.isAlliedTo(player)) {
                     sentiment = "Friendly and loyal to the player (You are both in the '" + factionName + "' faction)";
                 } else if (player.getTeam() != null) {
-                    sentiment = "Hostile toward the player (The player belongs to an enemy faction)";
+                    sentiment = "Hostile toward the player (The player belongs to an enemy faction and is a dangerous foe that must be eliminated)";
                 } else {
                     sentiment = "Suspicious and guarded (The player is unaligned/not in a faction)";
                 }
@@ -212,12 +216,12 @@ public class PromptBuilder {
             exigent.append("A dangerous fire is burning nearby! ");
         }
         
-        // Nearby Monsters (Filter out any whitelisted chat entities)
+        // Nearby Monsters (Filter out whitelisted chat entities AND blacklisted entities)
         AABB dangerBox = target.getBoundingBox().inflate(5.0D);
-        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, dangerBox, entity -> !Config.isWhitelisted(entity));
+        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, dangerBox, 
+                entity -> !Config.isWhitelisted(entity) && !Config.isBlacklisted(entity));
         
         if (!monsters.isEmpty()) {
-            // Get all names, remove duplicates, and join with a comma
             String monsterNames = monsters.stream()
                     .map(m -> m.getDisplayName().getString())
                     .distinct()
@@ -225,8 +229,9 @@ public class PromptBuilder {
             exigent.append("There are hostile monsters nearby (").append(monsterNames).append(")! ");
         }
 
-        // Nearby Animals (Excluding the target itself if they are an animal)
-        List<Animal> animals = level.getEntitiesOfClass(Animal.class, dangerBox, entity -> entity != target);
+        // Nearby Animals (Excluding the target itself AND blacklisted entities)
+        List<Animal> animals = level.getEntitiesOfClass(Animal.class, dangerBox, 
+                entity -> entity != target && !Config.isBlacklisted(entity));
         if (!animals.isEmpty()) {
             // Get all names, remove duplicates, and join with a comma
             String animalNames = animals.stream()
