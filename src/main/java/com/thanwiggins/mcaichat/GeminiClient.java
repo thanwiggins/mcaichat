@@ -77,17 +77,23 @@ public class GeminiClient {
         });
     }
 
-    // --- NEW METHOD: Background Lore Generation ---
-    // --- NEW METHOD: Background Lore Generation ---
     public static void generateStructureLore(String apiKey, String structureId, String structureType, String structureName, String category, String biome) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
-                // Added the Biome injection to the prompt!
                 String prompt = "You are a worldbuilding assistant for Minecraft. Generate a 2-3 sentence historical background or lore for a " 
                         + category + " structure of type '" + structureType + "' named '" + structureName + "', located in a " + biome + " biome. "
                         + "Make it fit naturally into a fantasy Minecraft world. Do not use markdown or formatting, just plain text.";
+
+                // NEW: Debug Output before sending
+                if (ClientLoreManager.debugLore) {
+                    Minecraft.getInstance().execute(() -> {
+                        if (Minecraft.getInstance().player != null) {
+                            Minecraft.getInstance().player.sendSystemMessage(Component.literal("§e[Lore Debug] §fSending prompt: " + prompt));
+                        }
+                    });
+                }
 
                 JsonObject body = new JsonObject();
                 JsonObject textPart = new JsonObject();
@@ -118,9 +124,18 @@ public class GeminiClient {
                             .get(0).getAsJsonObject()
                             .get("text").getAsString().trim();
 
-                    // Instantly save it to the map when it arrives!
                     ClientLoreManager.addLore(structureId, structureName, generatedLore, category);
                     System.out.println("[MC-AI Chat] Generated new lore for " + structureName + "!");
+
+                    // NEW: Debug Output after receiving
+                    if (ClientLoreManager.debugLore) {
+                        Minecraft.getInstance().execute(() -> {
+                            if (Minecraft.getInstance().player != null) {
+                                Minecraft.getInstance().player.sendSystemMessage(Component.literal("§a[Lore Debug] §fReceived: " + generatedLore));
+                            }
+                        });
+                    }
+
                 } else {
                     ClientLoreManager.addLore(structureId, structureName, "A mysterious place with an unknown history.", category);
                 }

@@ -118,7 +118,17 @@ public class PromptBuilder {
             }
         }
 
-        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s", biomeName, timeOfDay, weather, season);
+        // --- NEW: World Name Integration ---
+        Minecraft mc = Minecraft.getInstance();
+        String worldName = "Unknown World";
+        if (mc.getSingleplayerServer() != null) {
+            worldName = mc.getSingleplayerServer().getWorldData().getLevelName();
+        } else if (mc.getCurrentServer() != null) {
+            worldName = mc.getCurrentServer().name;
+        }
+
+        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s | World: %s", 
+                biomeName, timeOfDay, weather, season, worldName);
     }
 
     private static String buildWorldKnowledge(Level level, BlockPos pos) {

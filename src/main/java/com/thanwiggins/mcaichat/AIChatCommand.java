@@ -150,6 +150,17 @@ public class AIChatCommand {
                         )
                     )
                 )
+                
+                // --- LORE DEBUG COMMAND ---
+                .then(Commands.literal("lore")
+                    .executes(context -> {
+                        ClientLoreManager.debugLore = !ClientLoreManager.debugLore;
+                        context.getSource().sendSystemMessage(Component.literal(
+                            "§eAI Chat Lore Debugging is now: " + (ClientLoreManager.debugLore ? "§aON" : "§cOFF")
+                        ));
+                        return 1;
+                    })
+                )
         );
     }
 }
