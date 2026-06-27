@@ -15,25 +15,20 @@ public class WorldNameRandomizer {
 
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
-        // Check if the screen that just opened is the World Creation screen
         if (event.getScreen() instanceof CreateWorldScreen screen) {
             
-            // Get the default localized text (e.g., "New World" in English)
             String defaultName = Component.translatable("selectWorld.newWorld").getString();
 
-            // Search through the screen's widgets to find the text box
             for (Object child : screen.children()) {
                 if (child instanceof EditBox editBox) {
                     
-                    // Only overwrite it if it's the exact default text.
-                    // This prevents us from overwriting a custom name if the user 
-                    // resizes their game window (which re-initializes the screen).
                     if (editBox.getValue().equals(defaultName) || editBox.getValue().isEmpty()) {
                         String randomName = NPCData.getRandomRealm(new Random());
-                        editBox.setValue("Realm of " + randomName); // Example: "Realm of Oakhaven"
+                        // Stripped the "Realm of " prefix
+                        editBox.setValue(randomName); 
                     }
                     
-                    break; // The first EditBox is always the Name field, so we can stop searching.
+                    break;
                 }
             }
         }

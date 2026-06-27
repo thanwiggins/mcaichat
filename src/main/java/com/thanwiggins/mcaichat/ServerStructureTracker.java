@@ -21,7 +21,6 @@ public class ServerStructureTracker {
 
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
-        // Run every 20 ticks (1 second) on the Server
         if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide) {
             if (event.player.tickCount % 20 == 0) {
                 
@@ -32,10 +31,13 @@ public class ServerStructureTracker {
 
                 String foundId = "none";
                 String foundType = "none";
-                String foundBiome = "unknown"; // Added Biome Tracker
-                double closestDistSqr = 40000; 
+                String foundBiome = "unknown";
+                
+                // UPDATED: 250 blocks squared (250 * 250 = 62500)
+                double closestDistSqr = 62500; 
 
-                int radiusChunks = 12;
+                // UPDATED: 16 chunks in every direction is ~256 blocks
+                int radiusChunks = 16;
 
                 for (int x = -radiusChunks; x <= radiusChunks; x++) {
                     for (int z = -radiusChunks; z <= radiusChunks; z++) {
@@ -57,7 +59,6 @@ public class ServerStructureTracker {
                                         if (key != null) {
                                             foundType = key.toString();
                                             foundId = foundType + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
-                                            // Get the biome at the center of the structure!
                                             foundBiome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
                                         }
                                     }
@@ -67,7 +68,6 @@ public class ServerStructureTracker {
                     }
                 }
 
-                // Add the biome to the packet!
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
             }
         }

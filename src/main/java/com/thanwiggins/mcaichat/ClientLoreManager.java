@@ -22,7 +22,6 @@ public class ClientLoreManager {
     public static String currentStructureId = "none";
     public static String currentStructureType = "none";
     
-    // NEW: Debug toggle for the /aichat lore command
     public static boolean debugLore = false;
 
     public static class StructureLore {
@@ -97,27 +96,33 @@ public class ClientLoreManager {
             return;
         }
         
-        // NEW: Added towns_and_towers and valarian_conquest
         boolean isCiv = structureType.contains("village") || structureType.contains("city") || 
                         structureType.contains("bastion") || structureType.contains("fortress") ||
                         structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
         String category = isCiv ? "civilization" : "adventure";
         
+        String rawType = structureType.contains(":") ? structureType.substring(structureType.indexOf(":") + 1) : structureType;
+        
         String name = "Unknown";
         if (isCiv) {
             name = NPCData.getRandomRealm(new java.util.Random());
         } else {
-            String rawType = structureType.contains(":") ? structureType.substring(structureType.indexOf(":") + 1) : structureType;
             name = formatName(rawType); 
         }
 
         String formattedBiome = formatName(biomeRaw);
+        String formattedType = formatName(rawType); 
         
-        addLore(structureId, name, "Discovering the history of this place...", category);
-        
-        String apiKey = Config.API_KEY.get();
-        if (apiKey != null && !apiKey.isEmpty()) {
-            GeminiClient.generateStructureLore(apiKey, structureId, structureType, name, category, formattedBiome);
+        if (isCiv) {
+            addLore(structureId, name, "Discovering the history of this place...", category);
+            String apiKey = Config.API_KEY.get();
+            if (apiKey != null && !apiKey.isEmpty()) {
+                GeminiClient.generateStructureLore(apiKey, structureId, formattedType, name, category, formattedBiome);
+            }
+        } else {
+            // NEW: No API call for adventure structures! Just save the generated name.
+            addLore(structureId, name, "A hidden adventure structure.", category);
+            System.out.println("[MC-AI Chat] Logged adventure structure: " + name);
         }
     }
 

@@ -54,19 +54,11 @@ public class PromptBuilder {
         Level level = player.level();
         BlockPos pos = target.blockPosition();
 
-        // 1. Ambient Details
         String ambient = buildAmbientDetails(level, pos);
-        
-        // 2. World Knowledge (Placeholders for Phase 4 & 5)
         String world = buildWorldKnowledge(level, pos);
-        
-        // 3. Personal Background
         String background = buildPersonalBackground(player, target);
-        
-        // 4. Exigent Circumstances
         String exigent = buildExigentCircumstances(level, player, target);
 
-        // Inject into the template
         return basePrompt
                 .replace("{AMBIENT_DETAILS}", ambient)
                 .replace("{WORLD_KNOWLEDGE}", world)
@@ -89,14 +81,13 @@ public class PromptBuilder {
     private static String buildAmbientDetails(Level level, BlockPos pos) {
         Holder<Biome> biomeHolder = level.getBiome(pos);
         String biomeNameRaw = biomeHolder.unwrapKey().map(key -> key.location().getPath()).orElse("unknown");
-        String biomeName = formatName(biomeNameRaw); // Capitalizes the biome name
+        String biomeName = formatName(biomeNameRaw);
         
         long time = level.getDayTime() % 24000;
         String timeOfDay = (time < 12000) ? "Daytime" : (time < 13000) ? "Dusk" : (time < 23000) ? "Nighttime" : "Dawn";
         
         String weather = level.isThundering() ? "Thunderstorm" : level.isRaining() ? "Raining" : "Clear";
         
-        // --- Serene Seasons Integration via Reflection ---
         String season = "Unknown Season"; 
         if (ModList.get().isLoaded("sereneseasons")) {
             try {
@@ -113,12 +104,9 @@ public class PromptBuilder {
                     season = season.substring(0, 1).toUpperCase() + season.substring(1).toLowerCase();
                 }
             } catch (Exception e) {
-                System.err.println("[MC-AI Chat] Failed to fetch Serene Seasons data.");
-                e.printStackTrace();
             }
         }
 
-        // --- NEW: World Name Integration ---
         Minecraft mc = Minecraft.getInstance();
         String worldName = "Unknown World";
         if (mc.getSingleplayerServer() != null) {
@@ -127,65 +115,94 @@ public class PromptBuilder {
             worldName = mc.getCurrentServer().name;
         }
 
-        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s | World: %s", 
+        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s | World Name: %s", 
                 biomeName, timeOfDay, weather, season, worldName);
     }
 
     private static String buildWorldKnowledge(Level level, BlockPos pos) {
-        String knowledge = "Home: Unknown\n";
+        String knowledge = "";
+        String home = "Unknown";
         
-        // --- PHASE 4: DYNAMIC LORE INJECTION ---
         String currentStructId = ClientLoreManager.currentStructureId;
         
         if (!currentStructId.equals("none")) {
             ClientLoreManager.StructureLore lore = ClientLoreManager.getLore(currentStructId);
             if (lore != null) {
-                knowledge += "Nearby Location: " + lore.name + " (" + lore.type + " structure)\n";
-                knowledge += "Local Lore/History: " + lore.background;
+                int structX = pos.getX();
+                int structZ = pos.getZ();
+                String prettyType = "Structure";
+                
+                try {
+                    int lastUnder = currentStructId.lastIndexOf('_');
+                    int secondLastUnder = currentStructId.lastIndexOf('_', lastUnder - 1);
+                    
+                    int chunkZ = Integer.parseInt(currentStructId.substring(lastUnder + 1));
+                    int chunkX = Integer.parseInt(currentStructId.substring(secondLastUnder + 1, lastUnder));
+                    
+                    structX = chunkX * 16 + 8;
+                    structZ = chunkZ * 16 + 8;
+                    
+                    String rawType = currentStructId.substring(0, secondLastUnder);
+                    if(rawType.contains(":")) rawType = rawType.substring(rawType.indexOf(":") + 1);
+                    prettyType = formatName(rawType);
+                } catch (Exception e) {}
+                
+                double distance = Math.sqrt(Math.pow(pos.getX() - structX, 2) + Math.pow(pos.getZ() - structZ, 2));
+
+                if (lore.type.equals("civilization")) {
+                    if (distance <= 50) {
+                        home = lore.name;
+                    }
+                    knowledge += "Home: " + home + "\n";
+                    knowledge += "Location: " + lore.name + " (" + prettyType + ")\n";
+                    knowledge += "Local Lore/History: " + lore.background;
+                } else if (lore.type.equals("adventure")) {
+                    knowledge += "Home: " + home + "\n";
+                    knowledge += "Location: Wilderness\n";
+                    
+                    // UPDATED: Strict 250 block knowledge cutoff for adventure structures
+                    if (distance <= 250) {
+                        String direction = getDirection(pos.getX(), pos.getZ(), structX, structZ);
+                        knowledge += "Secret: You have heard rumors of '" + lore.name + "', a hidden " + prettyType.toLowerCase() + " located " + direction + " of here.";
+                    } else if (new java.util.Random().nextInt(100) < 5) {
+                        knowledge += "Secret: You have heard rumors of a dangerous hidden structure far away.";
+                    }
+                }
             } else {
-                knowledge += "Nearby Location: A recently discovered structure (history currently unknown).";
+                knowledge += "Home: " + home + "\nLocation: A recently discovered structure (history currently unknown).";
             }
         } else {
-            knowledge += "Nearby Structures: None in the immediate vicinity.";
+            knowledge += "Home: " + home + "\nLocation: None in the immediate vicinity.";
+            if (new java.util.Random().nextInt(100) < 5) {
+                knowledge += "\nSecret: You have heard rumors of a dangerous hidden structure far away.";
+            }
         }
         
-        // 5% chance to know about a secret structure
-        if (new java.util.Random().nextInt(100) < 5) {
-            knowledge += "\nSecret: You have heard rumors of a dangerous hidden structure far away.";
-        }
-        
-        return knowledge;
+        return knowledge.trim();
     }
 
     private static String buildPersonalBackground(Player player, Entity target) {
         CompoundTag data = target.getPersistentData();
         String name = data.getString("mcaichat_name");
         
-        // Ensure Personality starts with a capital letter
         String personality = data.getString("mcaichat_personality");
         if (personality != null && !personality.isEmpty()) {
             personality = personality.substring(0, 1).toUpperCase() + personality.substring(1);
         }
         
-        // Capitalize the Entity Type
         String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
         String entityType = formatName(ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).getPath());
         
-        // --- 1. Capability Logic ---
         boolean isMonster = target instanceof Monster;
         boolean isIronGolem = target instanceof IronGolem;
         boolean isGuardVillager = targetRegistryName.equals("guardvillagers:guard");
         boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
         
-        // If they fall into ANY of these categories, they can fight
         boolean isCapableFighter = isMonster || isIronGolem || isGuardVillager || isValarianFighter;
         String capability = isCapableFighter ? "Trained Warrior - Has Fighting Abilities" : "Normal Citizen - No Fighting Abilities";
 
-        // --- 2. Base Sentiment Logic ---
-        // Defaults to hostile for monsters, friendly for everyone else (like Guards and Golems)
         String sentiment = isMonster ? "Hostile toward the player (The player is a dangerous enemy that must be eliminated)" : "Friendly and welcoming toward the player";
 
-        // --- 3. VALARIAN CONQUEST INTEGRATION (Overrides base sentiment) ---
         if (isValarianFighter) {
             if (target.getTeam() != null) {
                 String factionName = target.getTeam().getName();
@@ -199,7 +216,6 @@ public class PromptBuilder {
             }
         }
 
-        // Memory statement now has no period
         return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s\nMemory: None (First interaction with the player)", 
                 name, entityType, personality, sentiment, capability);
     }
@@ -207,17 +223,14 @@ public class PromptBuilder {
     private static String buildExigentCircumstances(Level level, Player player, Entity target) {
         StringBuilder exigent = new StringBuilder();
 
-        // Player Vitals
         if (player.getHealth() <= 6.0f) exigent.append("The player is severely injured. ");
         if (player.getFoodData().getFoodLevel() <= 6) exigent.append("The player is starving. ");
 
-        // Loop through the player's active potion effects (Poison, Weakness, Speed, etc.)
         for (MobEffectInstance effect : player.getActiveEffects()) {
             String effectName = effect.getEffect().getDisplayName().getString();
             exigent.append("The player has a '").append(effectName).append("' status effect. ");
         }
 
-        // Scan a 5x5x5 area around the player for fire blocks
         BlockPos playerPos = player.blockPosition();
         int radius = 5;
         boolean fireFound = false;
@@ -240,7 +253,6 @@ public class PromptBuilder {
             exigent.append("A dangerous fire is burning nearby! ");
         }
         
-        // Nearby Monsters (Filter out whitelisted chat entities AND blacklisted entities)
         AABB dangerBox = target.getBoundingBox().inflate(5.0D);
         List<Monster> monsters = level.getEntitiesOfClass(Monster.class, dangerBox, 
                 entity -> !Config.isWhitelisted(entity) && !Config.isBlacklisted(entity));
@@ -253,11 +265,9 @@ public class PromptBuilder {
             exigent.append("There are hostile monsters nearby (").append(monsterNames).append(")! ");
         }
 
-        // Nearby Animals (Excluding the target itself AND blacklisted entities)
         List<Animal> animals = level.getEntitiesOfClass(Animal.class, dangerBox, 
                 entity -> entity != target && !Config.isBlacklisted(entity));
         if (!animals.isEmpty()) {
-            // Get all names, remove duplicates, and join with a comma
             String animalNames = animals.stream()
                     .map(a -> a.getDisplayName().getString())
                     .distinct()
@@ -266,14 +276,12 @@ public class PromptBuilder {
         }
         
         if (target instanceof LivingEntity livingTarget) {
-            // Entity Health Check
             float currentHealth = livingTarget.getHealth();
             float maxHealth = livingTarget.getMaxHealth();
-            if (currentHealth <= (maxHealth * 0.3f)) { // If health is at 30% or lower
+            if (currentHealth <= (maxHealth * 0.3f)) {
                 exigent.append("You are severely injured and near death. ");
             }
             
-            // Entity Status Effects Check (e.g., Poison, Slowness, Wither)
             for (MobEffectInstance effect : livingTarget.getActiveEffects()) {
                 String effectName = effect.getEffect().getDisplayName().getString();
                 exigent.append("You are currently suffering from the '").append(effectName).append("' status effect. ");
@@ -283,9 +291,25 @@ public class PromptBuilder {
         return exigent.toString().trim();
     }
 
-    /**
-     * Helper method to capitalize registry names (e.g. "dark_forest" -> "Dark Forest")
-     */
+    private static String getDirection(int fromX, int fromZ, int toX, int toZ) {
+        int dx = toX - fromX;
+        int dz = toZ - fromZ;
+        
+        if (Math.abs(dx) > Math.abs(dz) * 2) {
+            return dx > 0 ? "east" : "west";
+        } else if (Math.abs(dz) > Math.abs(dx) * 2) {
+            return dz > 0 ? "south" : "north";
+        } else if (dx > 0 && dz > 0) {
+            return "southeast";
+        } else if (dx > 0 && dz < 0) {
+            return "northeast";
+        } else if (dx < 0 && dz > 0) {
+            return "southwest";
+        } else {
+            return "northwest";
+        }
+    }
+
     private static String formatName(String input) {
         if (input == null || input.isEmpty()) return input;
         String[] words = input.replace("_", " ").split("\\s+");
