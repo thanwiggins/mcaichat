@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.IronGolem;
@@ -11,6 +12,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.trading.Merchant;
+import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
@@ -24,7 +27,8 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.Random;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class PromptBuilder {
@@ -44,6 +48,9 @@ public class PromptBuilder {
         === Personal Background ===
         {PERSONAL_BACKGROUND}
         
+        === Social Circle ===
+        {SOCIAL_CIRCLE}
+        
         === Exigent Circumstances ===
         {EXIGENT_CIRCUMSTANCES}
         """;
@@ -55,14 +62,16 @@ public class PromptBuilder {
         BlockPos pos = target.blockPosition();
 
         String ambient = buildAmbientDetails(level, pos);
-        String world = buildWorldKnowledge(level, pos);
+        String world = buildWorldKnowledge(pos, target);
         String background = buildPersonalBackground(player, target);
+        String social = buildSocialCircle(target);
         String exigent = buildExigentCircumstances(level, player, target);
 
         return basePrompt
                 .replace("{AMBIENT_DETAILS}", ambient)
                 .replace("{WORLD_KNOWLEDGE}", world)
                 .replace("{PERSONAL_BACKGROUND}", background)
+                .replace("{SOCIAL_CIRCLE}", social)
                 .replace("{EXIGENT_CIRCUMSTANCES}", exigent.isEmpty() ? "None." : exigent);
     }
 
@@ -119,66 +128,87 @@ public class PromptBuilder {
                 biomeName, timeOfDay, weather, season, worldName);
     }
 
-    private static String buildWorldKnowledge(Level level, BlockPos pos) {
+    private static String buildWorldKnowledge(BlockPos pos, Entity target) {
         String knowledge = "";
-        String home = "Unknown";
+        CompoundTag data = target.getPersistentData();
         
-        String currentStructId = ClientLoreManager.currentStructureId;
-        
-        if (!currentStructId.equals("none")) {
-            ClientLoreManager.StructureLore lore = ClientLoreManager.getLore(currentStructId);
-            if (lore != null) {
-                int structX = pos.getX();
-                int structZ = pos.getZ();
-                String prettyType = "Structure";
-                
-                try {
-                    int lastUnder = currentStructId.lastIndexOf('_');
-                    int secondLastUnder = currentStructId.lastIndexOf('_', lastUnder - 1);
-                    
-                    int chunkZ = Integer.parseInt(currentStructId.substring(lastUnder + 1));
-                    int chunkX = Integer.parseInt(currentStructId.substring(secondLastUnder + 1, lastUnder));
-                    
-                    structX = chunkX * 16 + 8;
-                    structZ = chunkZ * 16 + 8;
-                    
-                    String rawType = currentStructId.substring(0, secondLastUnder);
-                    if(rawType.contains(":")) rawType = rawType.substring(rawType.indexOf(":") + 1);
-                    prettyType = formatName(rawType);
-                } catch (Exception e) {}
-                
-                double distance = Math.sqrt(Math.pow(pos.getX() - structX, 2) + Math.pow(pos.getZ() - structZ, 2));
-
-                if (lore.type.equals("civilization")) {
-                    if (distance <= 50) {
-                        home = lore.name;
-                    }
-                    knowledge += "Home: " + home + "\n";
-                    knowledge += "Location: " + lore.name + " (" + prettyType + ")\n";
-                    knowledge += "Local Lore/History: " + lore.background;
-                } else if (lore.type.equals("adventure")) {
-                    knowledge += "Home: " + home + "\n";
-                    knowledge += "Location: Wilderness\n";
-                    
-                    // UPDATED: Strict 250 block knowledge cutoff for adventure structures
-                    if (distance <= 250) {
-                        String direction = getDirection(pos.getX(), pos.getZ(), structX, structZ);
-                        knowledge += "Secret: You have heard rumors of '" + lore.name + "', a hidden " + prettyType.toLowerCase() + " located " + direction + " of here.";
-                    } else if (new java.util.Random().nextInt(100) < 5) {
-                        knowledge += "Secret: You have heard rumors of a dangerous hidden structure far away.";
-                    }
-                }
-            } else {
-                knowledge += "Home: " + home + "\nLocation: A recently discovered structure (history currently unknown).";
-            }
+        // 1. Home Knowledge
+        String homeId = data.getString("mcaichat_home_id");
+        if (!homeId.isEmpty()) {
+            String homeType = formatName(data.getString("mcaichat_home_type"));
+            ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
+            String homeName = (homeLore != null) ? homeLore.name : "Unknown " + homeType;
+            String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
+            knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
         } else {
-            knowledge += "Home: " + home + "\nLocation: None in the immediate vicinity.";
-            if (new java.util.Random().nextInt(100) < 5) {
-                knowledge += "\nSecret: You have heard rumors of a dangerous hidden structure far away.";
+            knowledge += "Home: Nomad / No specific home\n";
+        }
+        
+        // 2. Surrounding Civilizations
+        if (data.contains("mcaichat_nearby_civs", 9)) { // 9 is ListTag
+            ListTag civList = data.getList("mcaichat_nearby_civs", 8); // 8 is StringTag
+            StringBuilder civsBuilder = new StringBuilder();
+            
+            for (int i = 0; i < civList.size(); i++) {
+                String[] parts = civList.getString(i).split("\\|");
+                if (parts.length == 5) {
+                    String civId = parts[0];
+                    String civType = formatName(parts[1]);
+                    String civBiome = formatName(parts[2]);
+                    int civX = Integer.parseInt(parts[3]);
+                    int civZ = Integer.parseInt(parts[4]);
+                    
+                    // Don't list their home again as a nearby civilization
+                    if (civId.equals(homeId)) continue;
+                    
+                    ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
+                    String civName = (civLore != null) ? civLore.name : "An unknown " + civType.toLowerCase();
+                    String direction = getDirection(pos.getX(), pos.getZ(), civX, civZ);
+                    
+                    civsBuilder.append("- ").append(civName).append(" located to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
+                }
+            }
+            
+            if (civsBuilder.length() > 0) {
+                knowledge += "Nearby Civilizations:\n" + civsBuilder.toString();
             }
         }
         
+        // 3. Secret Adventure Structure Knowledge
+        if (data.contains("mcaichat_secret_type")) {
+            String secretType = formatName(data.getString("mcaichat_secret_type"));
+            int secretX = data.getInt("mcaichat_secret_x");
+            int secretZ = data.getInt("mcaichat_secret_z");
+            
+            double dist = Math.sqrt(Math.pow(pos.getX() - secretX, 2) + Math.pow(pos.getZ() - secretZ, 2));
+            String direction = getDirection(pos.getX(), pos.getZ(), secretX, secretZ);
+            
+            String relativeDistance;
+            if (dist < 50) relativeDistance = "very close";
+            else if (dist < 150) relativeDistance = "nearby";
+            else if (dist < 300) relativeDistance = "a moderate distance";
+            else relativeDistance = "quite far";
+
+            knowledge += "Secret: You know the location of a hidden " + secretType + " that is " + relativeDistance + " to the " + direction + ".";
+        }
+        
         return knowledge.trim();
+    }
+
+    public static String getShortCapabilityString(Entity target) {
+        String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
+        boolean isMonster = target instanceof Monster;
+        boolean isIronGolem = target instanceof IronGolem;
+        boolean isGuardVillager = targetRegistryName.equals("guardvillagers:guard");
+        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+        boolean isMerchant = target instanceof net.minecraft.world.item.trading.Merchant;
+        
+        boolean isCapableFighter = isMonster || isIronGolem || isGuardVillager || isValarianFighter;
+        
+        if (isCapableFighter && isMerchant) return "Warrior & Merchant";
+        if (isCapableFighter) return "Warrior";
+        if (isMerchant) return "Merchant";
+        return "Citizen";
     }
 
     private static String buildPersonalBackground(Player player, Entity target) {
@@ -194,12 +224,15 @@ public class PromptBuilder {
         String entityType = formatName(ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).getPath());
         
         boolean isMonster = target instanceof Monster;
-        boolean isIronGolem = target instanceof IronGolem;
-        boolean isGuardVillager = targetRegistryName.equals("guardvillagers:guard");
         boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+        boolean isMerchant = target instanceof Merchant;
         
-        boolean isCapableFighter = isMonster || isIronGolem || isGuardVillager || isValarianFighter;
-        String capability = isCapableFighter ? "Trained Warrior - Has Fighting Abilities" : "Normal Citizen - No Fighting Abilities";
+        String shortCap = getShortCapabilityString(target);
+        String capability = "Normal Citizen - No Fighting Abilities";
+        
+        if (shortCap.equals("Warrior & Merchant")) capability = "Trained Warrior & Merchant - Has Fighting Abilities and trades items";
+        else if (shortCap.equals("Warrior")) capability = "Trained Warrior - Has Fighting Abilities";
+        else if (shortCap.equals("Merchant")) capability = "Merchant - Trades items with the player";
 
         String sentiment = isMonster ? "Hostile toward the player (The player is a dangerous enemy that must be eliminated)" : "Friendly and welcoming toward the player";
 
@@ -213,6 +246,34 @@ public class PromptBuilder {
                 } else {
                     sentiment = "Suspicious and guarded (The player is unaligned/not in a faction)";
                 }
+            }
+        }
+        
+        String tradingInfo = "";
+        if (isMerchant) {
+            Merchant merchant = (Merchant) target;
+            if (!merchant.getOffers().isEmpty()) {
+                StringBuilder trades = new StringBuilder();
+                for (MerchantOffer offer : merchant.getOffers()) {
+                    String itemA = formatName(ForgeRegistries.ITEMS.getKey(offer.getBaseCostA().getItem()).getPath());
+                    String itemResult = formatName(ForgeRegistries.ITEMS.getKey(offer.getResult().getItem()).getPath());
+                    
+                    trades.append(offer.getBaseCostA().getCount()).append(" ").append(itemA);
+                    
+                    if (!offer.getCostB().isEmpty()) {
+                        String itemB = formatName(ForgeRegistries.ITEMS.getKey(offer.getCostB().getItem()).getPath());
+                        trades.append(" and ").append(offer.getCostB().getCount()).append(" ").append(itemB);
+                    }
+                    
+                    trades.append(" for ").append(offer.getResult().getCount()).append(" ").append(itemResult).append(", ");
+                }
+                
+                if (trades.length() > 0) {
+                    trades.setLength(trades.length() - 2); 
+                    tradingInfo = "\nTrades Available: Accepts " + trades.toString() + ".";
+                }
+            } else {
+                tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
             }
         }
 
@@ -241,8 +302,41 @@ public class PromptBuilder {
             }
         }
 
-        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s\nMemory: %s\nTime Since Last Conversation: %s", 
-                name, entityType, personality, sentiment, capability, memoryStr, timeElapsedStr);
+        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s%s\nMemory: %s\nTime Since Last Conversation: %s", 
+                name, entityType, personality, sentiment, capability, tradingInfo, memoryStr, timeElapsedStr);
+    }
+
+    private static String buildSocialCircle(Entity target) {
+        CompoundTag data = target.getPersistentData();
+        String homeId = data.getString("mcaichat_home_id");
+        if (homeId.isEmpty() || homeId.equals("none")) {
+            return "You do not belong to a specific home, so you have no recognized compatriots.";
+        }
+
+        Map<UUID, ClientSocialManager.CitizenProfile> citizens = ClientSocialManager.getCitizens(homeId);
+        if (citizens.size() <= 1) {
+            return "You are currently the only known member of your home.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("You know the following individuals who share your home:\n");
+        for (Map.Entry<UUID, ClientSocialManager.CitizenProfile> entry : citizens.entrySet()) {
+            if (entry.getKey().equals(target.getUUID())) continue; // Skip themselves
+            
+            ClientSocialManager.CitizenProfile profile = entry.getValue();
+            sb.append("- ").append(profile.name)
+              .append(" (").append(formatName(profile.type)).append(")")
+              .append(" | Personality: ").append(profile.personality)
+              .append(" | Capabilities: ").append(profile.capabilities);
+              
+            if (profile.isDeceased) {
+                String cause = (profile.causeOfDeath != null && !profile.causeOfDeath.isEmpty()) ? profile.causeOfDeath : "Unknown causes";
+                sb.append(" [DECEASED - ").append(cause).append("]");
+            }
+            sb.append("\n");
+        }
+        
+        return sb.toString().trim();
     }
 
     private static String buildExigentCircumstances(Level level, Player player, Entity target) {
