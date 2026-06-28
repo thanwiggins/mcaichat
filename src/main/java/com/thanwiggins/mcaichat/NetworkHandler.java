@@ -20,5 +20,10 @@ public class NetworkHandler {
                 StructurePacket::encode,
                 StructurePacket::new,
                 StructurePacket::handle);
+                
+        INSTANCE.registerMessage(id++, SyncNPCPacket.class,
+                SyncNPCPacket::encode,
+                SyncNPCPacket::new,
+                SyncNPCPacket::handle);
     }
 }

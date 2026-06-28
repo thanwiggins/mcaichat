@@ -2,6 +2,7 @@ package com.thanwiggins.mcaichat;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -33,10 +34,7 @@ public class ServerStructureTracker {
                 String foundType = "none";
                 String foundBiome = "unknown";
                 
-                // UPDATED: 250 blocks squared (250 * 250 = 62500)
                 double closestDistSqr = 62500; 
-
-                // UPDATED: 16 chunks in every direction is ~256 blocks
                 int radiusChunks = 16;
 
                 for (int x = -radiusChunks; x <= radiusChunks; x++) {
@@ -52,7 +50,7 @@ public class ServerStructureTracker {
                                     BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                                     double distSqr = playerPos.distSqr(startPos);
                                     
-                                    if (distSqr <= closestDistSqr) {
+                                    if (start.getBoundingBox().isInside(playerPos) || distSqr <= closestDistSqr) {
                                         closestDistSqr = distSqr;
                                         ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
                                         
@@ -69,6 +67,46 @@ public class ServerStructureTracker {
                 }
 
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
+
+                // --- NEW: Sync nearby NPCs to the client ---
+                net.minecraft.world.phys.AABB searchBox = player.getBoundingBox().inflate(16.0D); 
+                java.util.List<net.minecraft.world.entity.Entity> nearbyNPCs = serverLevel.getEntities(player, searchBox, e -> Config.isWhitelisted(e));
+
+                for (net.minecraft.world.entity.Entity npc : nearbyNPCs) {
+                    CompoundTag data = npc.getPersistentData();
+                    
+                    // Trigger the World Knowledge scan if it hasn't happened yet!
+                    if (!data.contains("mcaichat_home_id")) {
+                        IdentityHandler.generateWorldKnowledge(npc, serverLevel);
+                    }
+                    
+                    // Build the trades string on the SERVER where it's accessible
+                    String tradingInfo = "";
+                    if (npc instanceof net.minecraft.world.item.trading.Merchant merchant) {
+                        if (!merchant.getOffers().isEmpty()) {
+                            StringBuilder trades = new StringBuilder();
+                            for (net.minecraft.world.item.trading.MerchantOffer offer : merchant.getOffers()) {
+                                String itemA = net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(offer.getBaseCostA().getItem()).getPath();
+                                String itemResult = net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(offer.getResult().getItem()).getPath();
+                                
+                                trades.append(offer.getBaseCostA().getCount()).append(" ").append(itemA.replace("_", " "));
+                                if (!offer.getCostB().isEmpty()) {
+                                    String itemB = net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(offer.getCostB().getItem()).getPath();
+                                    trades.append(" and ").append(offer.getCostB().getCount()).append(" ").append(itemB.replace("_", " "));
+                                }
+                                trades.append(" for ").append(offer.getResult().getCount()).append(" ").append(itemResult.replace("_", " ")).append(", ");
+                            }
+                            if (trades.length() > 0) {
+                                trades.setLength(trades.length() - 2);
+                                tradingInfo = "\nTrades Available: Accepts " + trades.toString() + ".";
+                            }
+                        } else {
+                            tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
+                        }
+                    }
+
+                    NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new SyncNPCPacket(npc.getId(), data, tradingInfo));
+                }
             }
         }
     }

@@ -1,5 +1,8 @@
 package com.thanwiggins.mcaichat;
 
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -25,8 +28,8 @@ import java.util.Random;
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID)
 public class IdentityHandler {
 
-    // Toggle this to false to disable console spam once you fix the issue
-    private static final boolean DEBUG_ID_GEN = true;
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final boolean DEBUG_ID_GEN = false; // Turned off to prevent spam
 
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
@@ -35,132 +38,103 @@ public class IdentityHandler {
         if (Config.isWhitelisted(entity)) {
             CompoundTag data = entity.getPersistentData();
             
-            // If the entity doesn't have an AI identity yet, give it one
+            // Only assign Name and Personality on spawn. World Knowledge is deferred!
             if (!data.contains("mcaichat_personality")) {
-                
-                // Seed the Random with the UUID. This guarantees the Client and Server 
-                // independently pick the exact same traits!
                 Random random = new Random(entity.getUUID().getLeastSignificantBits());
-                
                 String name = NPCData.getRandomName(random);
                 String personality = NPCData.getRandomPersonality(random);
                 
-                // Save to NBT
                 data.putString("mcaichat_personality", personality);
                 data.putString("mcaichat_name", name);
                 
-                // Set the vanilla Custom Name so it physically tracks above their head
                 if (!event.getLevel().isClientSide()) {
                     entity.setCustomName(Component.literal(name));
                     entity.setCustomNameVisible(true);
-                    
-                    // --- WORLD KNOWLEDGE SCAN ---
-                    if (event.getLevel() instanceof ServerLevel serverLevel) {
-                        BlockPos pos = entity.blockPosition();
-                        ChunkPos chunkPos = new ChunkPos(pos);
-                        int radius = 16; // 16 chunks = ~256 blocks
-                        
-                        if (DEBUG_ID_GEN) {
-                            System.out.println("\n--- [ID DEBUG] Spawning " + entity.getName().getString() + " at " + pos.toShortString() + " ---");
-                        }
+                }
+            }
+        }
+    }
 
-                        List<String> nearbyCivs = new ArrayList<>();
-                        String homeId = "";
-                        double closestCivDist = 50 * 50; // 50 blocks squared for "Home"
-                        
-                        boolean rollSecret = random.nextInt(100) < 5;
-                        double closestSecretDist = Double.MAX_VALUE;
-                        String secretType = "";
-                        int secretX = 0;
-                        int secretZ = 0;
-                        
-                        for (int x = -radius; x <= radius; x++) {
-                            for (int z = -radius; z <= radius; z++) {
-                                ChunkAccess chunk = serverLevel.getChunk(chunkPos.x + x, chunkPos.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
+    // This is now called from ServerStructureTracker when a player gets close!
+    public static void generateWorldKnowledge(Entity entity, ServerLevel serverLevel) {
+        CompoundTag data = entity.getPersistentData();
+        BlockPos pos = entity.blockPosition();
+        ChunkPos chunkPos = new ChunkPos(pos);
+        int radius = 16; 
+        
+        Random random = new Random(entity.getUUID().getLeastSignificantBits());
+        List<String> nearbyCivs = new ArrayList<>();
+        String homeId = "";
+        double closestCivDist = 50 * 50; 
+        
+        boolean rollSecret = random.nextInt(100) < 5;
+        double closestSecretDist = Double.MAX_VALUE;
+        String secretType = "";
+        int secretX = 0;
+        int secretZ = 0;
+        
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                ChunkAccess chunk = serverLevel.getChunk(chunkPos.x + x, chunkPos.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
+                if (chunk == null) continue;
+
+                for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
+                    StructureStart start = entry.getValue();
+                    if (start != null && start.isValid()) {
+                        ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
+                        if (key != null) {
+                            String fullKey = key.toString(); // e.g. "valarian_conquest:visgothian_outpost"
+                            String structType = key.getPath();
+                            BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
+                            double distSqr = pos.distSqr(startPos);
+                            String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+
+                            // FIXED: Using fullKey so mod namespaces are detected correctly!
+                            boolean isCiv = fullKey.contains("village") || fullKey.contains("city") || 
+                                            fullKey.contains("bastion") || fullKey.contains("fortress") ||
+                                            fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
+                            
+                            if (isCiv) {
+                                String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
                                 
-                                if (chunk == null) {
-                                    if (DEBUG_ID_GEN && x == 0 && z == 0) {
-                                        System.out.println("[ID DEBUG] Current chunk is NULL (Not loaded properly)");
-                                    }
-                                    continue;
+                                if (start.getBoundingBox().isInside(pos) || distSqr <= closestCivDist) {
+                                    closestCivDist = distSqr;
+                                    homeId = structId;
+                                    data.putString("mcaichat_home_id", homeId);
+                                    data.putString("mcaichat_home_type", structType);
                                 }
-
-                                for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
-                                    StructureStart start = entry.getValue();
-                                    if (start != null && start.isValid()) {
-                                        ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
-                                        if (key != null) {
-                                            String structType = key.getPath();
-                                            BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
-                                            double distSqr = pos.distSqr(startPos);
-                                            String structId = key.toString() + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
-                                            
-                                            if (DEBUG_ID_GEN) {
-                                                System.out.println("[ID DEBUG] Found valid structure: " + structType);
-                                                System.out.println("    -> Structure Center: " + startPos.toShortString());
-                                                System.out.println("    -> Distance Squared: " + distSqr + " (Must be <= " + closestCivDist + " for Home)");
-                                            }
-
-                                            boolean isCiv = structType.contains("village") || structType.contains("city") || 
-                                                            structType.contains("bastion") || structType.contains("fortress") ||
-                                                            structType.contains("towns_and_towers") || structType.contains("valarian_conquest");
-                                            
-                                            if (isCiv) {
-                                                String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                                if (distSqr <= closestCivDist) {
-                                                    closestCivDist = distSqr;
-                                                    homeId = structId;
-                                                    data.putString("mcaichat_home_id", homeId);
-                                                    data.putString("mcaichat_home_type", structType);
-                                                }
-                                                nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
-                                                
-                                                if (DEBUG_ID_GEN) {
-                                                    System.out.println("    -> Logged as a Civilization!");
-                                                }
-                                            } else if (rollSecret) {
-                                                if (distSqr < closestSecretDist) {
-                                                    closestSecretDist = distSqr;
-                                                    secretType = structType;
-                                                    secretX = startPos.getX();
-                                                    secretZ = startPos.getZ();
-                                                    
-                                                    if (DEBUG_ID_GEN) {
-                                                        System.out.println("    -> Logged as a Secret Adventure Structure!");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
+                            } else if (rollSecret) {
+                                if (distSqr < closestSecretDist) {
+                                    closestSecretDist = distSqr;
+                                    secretType = structType;
+                                    secretX = startPos.getX();
+                                    secretZ = startPos.getZ();
                                 }
                             }
-                        }
-                        
-                        if (DEBUG_ID_GEN) {
-                            System.out.println("[ID DEBUG] Final assigned home: " + (homeId.isEmpty() ? "NONE" : homeId));
-                            System.out.println("[ID DEBUG] Total nearby civs found: " + nearbyCivs.size());
-                            System.out.println("[ID DEBUG] Secret structure known: " + (secretType.isEmpty() ? "NONE" : secretType));
-                            System.out.println("--------------------------------------------------\n");
-                        }
-
-                        // Save Nearby Civilizations to NBT
-                        if (!nearbyCivs.isEmpty()) {
-                            ListTag civList = new ListTag();
-                            for (String civ : nearbyCivs) {
-                                civList.add(StringTag.valueOf(civ));
-                            }
-                            data.put("mcaichat_nearby_civs", civList);
-                        }
-                        
-                        // Save Secret Knowledge to NBT
-                        if (rollSecret && !secretType.isEmpty()) {
-                            data.putString("mcaichat_secret_type", secretType);
-                            data.putInt("mcaichat_secret_x", secretX);
-                            data.putInt("mcaichat_secret_z", secretZ);
                         }
                     }
                 }
             }
+        }
+        
+        if (!nearbyCivs.isEmpty()) {
+            ListTag civList = new ListTag();
+            for (String civ : nearbyCivs) {
+                civList.add(StringTag.valueOf(civ));
+            }
+            data.put("mcaichat_nearby_civs", civList);
+        }
+        
+        if (rollSecret && !secretType.isEmpty()) {
+            data.putString("mcaichat_secret_type", secretType);
+            data.putInt("mcaichat_secret_x", secretX);
+            data.putInt("mcaichat_secret_z", secretZ);
+        }
+
+        // Failsafe: Mark that we completed the scan so we don't scan this NPC again
+        if (!data.contains("mcaichat_home_id")) {
+            data.putString("mcaichat_home_id", "none");
         }
     }
 }

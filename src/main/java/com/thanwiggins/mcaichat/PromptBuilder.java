@@ -304,34 +304,12 @@ public class PromptBuilder {
             }
         }
         
-        String tradingInfo = "";
-        if (isMerchant) {
-            Merchant merchant = (Merchant) target;
-            if (!merchant.getOffers().isEmpty()) {
-                StringBuilder trades = new StringBuilder();
-                for (MerchantOffer offer : merchant.getOffers()) {
-                    String itemA = formatName(ForgeRegistries.ITEMS.getKey(offer.getBaseCostA().getItem()).getPath());
-                    String itemResult = formatName(ForgeRegistries.ITEMS.getKey(offer.getResult().getItem()).getPath());
-                    
-                    trades.append(offer.getBaseCostA().getCount()).append(" ").append(itemA);
-                    
-                    if (!offer.getCostB().isEmpty()) {
-                        String itemB = formatName(ForgeRegistries.ITEMS.getKey(offer.getCostB().getItem()).getPath());
-                        trades.append(" and ").append(offer.getCostB().getCount()).append(" ").append(itemB);
-                    }
-                    
-                    trades.append(" for ").append(offer.getResult().getCount()).append(" ").append(itemResult).append(", ");
-                }
-                
-                if (trades.length() > 0) {
-                    trades.setLength(trades.length() - 2); 
-                    tradingInfo = "\nTrades Available: Accepts " + trades.toString() + ".";
-                }
-            } else {
-                tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
-            }
+        // --- UPDATED: Read trades from the server-synced packet! ---
+        String tradingInfo = data.getString("mcaichat_trades");
+        if (isMerchant && tradingInfo.isEmpty()) {
+            tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
         }
-
+        
         // Fetch Conversation Memory
         ClientMemoryManager.EntityMemory mem = ClientMemoryManager.getMemory(target.getUUID());
         String memoryStr = "None (First interaction with the player)";
