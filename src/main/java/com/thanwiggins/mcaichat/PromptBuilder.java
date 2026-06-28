@@ -8,8 +8,13 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.ambient.AmbientCreature;
+import net.minecraft.world.entity.animal.WaterAnimal;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.trading.Merchant;
@@ -26,6 +31,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -405,26 +411,41 @@ public class PromptBuilder {
             exigent.append("A dangerous fire is burning nearby! ");
         }
         
-        AABB dangerBox = target.getBoundingBox().inflate(5.0D);
-        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, dangerBox, 
-                entity -> !Config.isWhitelisted(entity) && !Config.isBlacklisted(entity));
-        
-        if (!monsters.isEmpty()) {
-            String monsterNames = monsters.stream()
-                    .map(m -> m.getDisplayName().getString())
-                    .distinct()
-                    .collect(Collectors.joining(", "));
-            exigent.append("There are hostile monsters nearby (").append(monsterNames).append(")! ");
+        AABB dangerBox = target.getBoundingBox().inflate(24.0D); // Increased to 24 blocks to catch giant modded mobs
+
+        List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox, 
+            entity -> entity != target 
+                && entity != player // Ignore the player in the wildlife/monster list
+                && !Config.isBlacklisted(entity) 
+                && !Config.isWhitelisted(entity)
+                && !(entity instanceof AmbientCreature) // Ignore bats
+                && !(entity instanceof WaterAnimal && !target.isUnderWater()) // Ignore fish unless NPC is swimming
+        );
+
+        List<String> hostileNames = new ArrayList<>();
+        List<String> wildlifeNames = new ArrayList<>();
+
+        for (LivingEntity entity : nearbyEntities) {
+            String name = entity.getDisplayName().getString();
+            
+            // Check if it's an Enemy OR if its spawn category is Monster
+            boolean isHostile = (entity instanceof Enemy) || (entity.getType().getCategory() == MobCategory.MONSTER);
+            
+            if (isHostile) {
+                if (!hostileNames.contains(name)) hostileNames.add(name);
+            } else {
+                if (!wildlifeNames.contains(name)) wildlifeNames.add(name);
+            }
         }
 
-        List<Animal> animals = level.getEntitiesOfClass(Animal.class, dangerBox, 
-                entity -> entity != target && !Config.isBlacklisted(entity));
-        if (!animals.isEmpty()) {
-            String animalNames = animals.stream()
-                    .map(a -> a.getDisplayName().getString())
-                    .distinct()
-                    .collect(Collectors.joining(", "));
-            exigent.append("There are animals nearby (").append(animalNames).append("). ");
+        if (!hostileNames.isEmpty()) {
+            String joinedHostiles = String.join(", ", hostileNames);
+            exigent.append("There are dangerous enemies nearby (").append(joinedHostiles).append(")! ");
+        }
+
+        if (!wildlifeNames.isEmpty()) {
+            String joinedWildlife = String.join(", ", wildlifeNames);
+            exigent.append("There is local wildlife nearby (").append(joinedWildlife).append("). ");
         }
         
         if (target instanceof LivingEntity livingTarget) {

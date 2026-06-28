@@ -172,6 +172,17 @@ public class AIChatCommand {
                         return 1;
                     })
                 )
+
+                // --- SECRET DEBUG COMMAND ---
+                .then(Commands.literal("secret")
+                    .executes(context -> {
+                        NameplateRenderer.debugSecret = !NameplateRenderer.debugSecret;
+                        context.getSource().sendSystemMessage(Component.literal(
+                            "§eAI Chat Secret Nameplate Debugging is now: " + (NameplateRenderer.debugSecret ? "§aON" : "§cOFF")
+                        ));
+                        return 1;
+                    })
+                )
         );
     }
 }

@@ -67,7 +67,15 @@ public class IdentityHandler {
         String homeId = "";
         double closestCivDist = 50 * 50; 
         
+        // --- 1. LOG THE INITIAL ROLL ---
         boolean rollSecret = random.nextInt(100) < 5;
+        String npcName = data.getString("mcaichat_name");
+        if (npcName.isEmpty()) npcName = "Unknown NPC";
+        
+        LOGGER.info("[Secret Debug] Generating World Knowledge for: " + npcName);
+        LOGGER.info("[Secret Debug] Did " + npcName + " pass the 5% secret roll? " + (rollSecret ? "YES!" : "No."));
+        // -------------------------------
+        
         double closestSecretDist = Double.MAX_VALUE;
         String secretType = "";
         int secretX = 0;
@@ -89,7 +97,6 @@ public class IdentityHandler {
                             double distSqr = pos.distSqr(startPos);
                             String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
 
-                            // FIXED: Using fullKey so mod namespaces are detected correctly!
                             boolean isCiv = fullKey.contains("village") || fullKey.contains("city") || 
                                             fullKey.contains("bastion") || fullKey.contains("fortress") ||
                                             fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
@@ -126,11 +133,18 @@ public class IdentityHandler {
             data.put("mcaichat_nearby_civs", civList);
         }
         
-        if (rollSecret && !secretType.isEmpty()) {
-            data.putString("mcaichat_secret_type", secretType);
-            data.putInt("mcaichat_secret_x", secretX);
-            data.putInt("mcaichat_secret_z", secretZ);
+        // --- 2. LOG THE FINAL OUTCOME ---
+        if (rollSecret) {
+            if (!secretType.isEmpty()) {
+                LOGGER.info("[Secret Debug] SUCCESS: " + npcName + " learned about a hidden '" + secretType + "' at X:" + secretX + " Z:" + secretZ);
+                data.putString("mcaichat_secret_type", secretType);
+                data.putInt("mcaichat_secret_x", secretX);
+                data.putInt("mcaichat_secret_z", secretZ);
+            } else {
+                LOGGER.info("[Secret Debug] FAILED: " + npcName + " passed the roll, but NO adventure structures were found within 16 chunks.");
+            }
         }
+        // --------------------------------
 
         // Failsafe: Mark that we completed the scan so we don't scan this NPC again
         if (!data.contains("mcaichat_home_id")) {
