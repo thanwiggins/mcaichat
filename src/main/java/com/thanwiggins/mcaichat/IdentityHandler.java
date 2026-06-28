@@ -96,10 +96,25 @@ public class IdentityHandler {
                             BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                             double distSqr = pos.distSqr(startPos);
                             String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+                            
+                            // --- NEW: CATEGORY OVERRIDE ---
+                            if (Config.isInList(Config.IGNORED_STRUCTURES, fullKey)) continue;
 
-                            boolean isCiv = fullKey.contains("village") || fullKey.contains("city") || 
-                                            fullKey.contains("bastion") || fullKey.contains("fortress") ||
-                                            fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
+                            boolean isCiv = false;
+                            boolean isAdv = false;
+
+                            if (Config.isInList(Config.CIV_STRUCTURES, fullKey)) {
+                                isCiv = true;
+                            } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, fullKey)) {
+                                isAdv = true;
+                            } else {
+                                // Default Logic
+                                isCiv = fullKey.contains("village") || fullKey.contains("city") || 
+                                                fullKey.contains("bastion") || fullKey.contains("fortress") ||
+                                                fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
+                                isAdv = !isCiv; // By default everything not a civilization is an adventure
+                            }
+                            // ------------------------------
                             
                             if (isCiv) {
                                 String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
@@ -111,7 +126,7 @@ public class IdentityHandler {
                                     data.putString("mcaichat_home_type", structType);
                                 }
                                 nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
-                            } else if (rollSecret) {
+                            } else if (isAdv && rollSecret) {
                                 if (distSqr < closestSecretDist) {
                                     closestSecretDist = distSqr;
                                     secretType = structType;

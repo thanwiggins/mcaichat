@@ -183,7 +183,7 @@ public class GeminiClient {
                             .get(0).getAsJsonObject()
                             .get("text").getAsString().trim();
 
-                    ClientLoreManager.addLore(structureId, structureName, generatedLore, category);
+                    ClientLoreManager.updateLoreBackground(structureId, generatedLore);
                     System.out.println("[MC-AI Chat] Generated new lore for " + structureName + "!");
 
                     if (ClientLoreManager.debugLore) {
@@ -195,11 +195,11 @@ public class GeminiClient {
                     }
 
                 } else {
-                    ClientLoreManager.addLore(structureId, structureName, "A mysterious place with an unknown history.", category);
+                    ClientLoreManager.updateLoreBackground(structureId, "A mysterious place with an unknown history.");
                 }
             } catch (Exception e) {
                 System.err.println("[MC-AI Chat] Lore generation failed: " + e.getMessage());
-                ClientLoreManager.addLore(structureId, structureName, "A mysterious place with an unknown history.", category);
+                ClientLoreManager.updateLoreBackground(structureId, "A mysterious place with an unknown history.");
             }
         });
     }

@@ -427,9 +427,20 @@ public class PromptBuilder {
 
         for (LivingEntity entity : nearbyEntities) {
             String name = entity.getDisplayName().getString();
+            String registryName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
             
-            // Check if it's an Enemy OR if its spawn category is Monster
-            boolean isHostile = (entity instanceof Enemy) || (entity.getType().getCategory() == MobCategory.MONSTER);
+            // --- NEW: CATEGORY OVERRIDE ---
+            boolean isHostile = false;
+
+            if (Config.isInList(Config.CUSTOM_MONSTERS, registryName)) {
+                isHostile = true;
+            } else if (Config.isInList(Config.CUSTOM_WILDLIFE, registryName)) {
+                isHostile = false;
+            } else {
+                // Default logic
+                isHostile = (entity instanceof Enemy) || (entity.getType().getCategory() == MobCategory.MONSTER);
+            }
+            // ------------------------------
             
             if (isHostile) {
                 if (!hostileNames.contains(name)) hostileNames.add(name);

@@ -12,6 +12,8 @@ import java.io.FileWriter;
 import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 
 public class ClientLoreManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -28,11 +30,13 @@ public class ClientLoreManager {
         public String name;
         public String background;
         public String type;
+        public String fullKey; // NEW
 
-        public StructureLore(String name, String background, String type) {
+        public StructureLore(String name, String background, String type, String fullKey) {
             this.name = name;
             this.background = background;
             this.type = type;
+            this.fullKey = fullKey;
         }
     }
 
@@ -53,8 +57,6 @@ public class ClientLoreManager {
                 loreMap = GSON.fromJson(reader, type);
                 if (loreMap == null) loreMap = new HashMap<>();
             } catch (Exception e) {
-                System.err.println("[MC-AI Chat] Failed to load lore file.");
-                e.printStackTrace();
                 loreMap = new HashMap<>();
             }
         } else {
@@ -67,19 +69,36 @@ public class ClientLoreManager {
         File loreFile = new File(LORE_DIR, currentWorldId + ".json");
         try (FileWriter writer = new FileWriter(loreFile)) {
             GSON.toJson(loreMap, writer);
-        } catch (Exception e) {
-            System.err.println("[MC-AI Chat] Failed to save lore file.");
-            e.printStackTrace();
-        }
+        } catch (Exception e) {}
     }
 
     public static StructureLore getLore(String structureId) {
         return loreMap.get(structureId);
     }
 
-    public static void addLore(String structureId, String name, String background, String type) {
-        loreMap.put(structureId, new StructureLore(name, background, type));
+    // NEW: Pass fullKey so the config UI can read it
+    public static void addLore(String structureId, String name, String background, String type, String fullKey) {
+        loreMap.put(structureId, new StructureLore(name, background, type, fullKey));
         saveWorldLore();
+    }
+    
+    // NEW: Specifically update just the AI's generated text without overwriting the key
+    public static void updateLoreBackground(String structureId, String background) {
+        if (loreMap.containsKey(structureId)) {
+            loreMap.get(structureId).background = background;
+            saveWorldLore();
+        }
+    }
+
+    // NEW: Fetch all discovered structures for the config UI
+    public static Set<String> getKnownStructureKeys() {
+        Set<String> keys = new HashSet<>();
+        for (StructureLore lore : loreMap.values()) {
+            if (lore.fullKey != null && !lore.fullKey.isEmpty()) {
+                keys.add(lore.fullKey);
+            }
+        }
+        return keys;
     }
 
     public static void onStructureEntered(String structureId, String structureType, String biomeRaw) {
@@ -92,37 +111,39 @@ public class ClientLoreManager {
         currentStructureId = structureId;
         currentStructureType = structureType;
         
-        if (loreMap.containsKey(structureId)) {
-            return;
+        if (loreMap.containsKey(structureId)) return;
+        
+        // --- NEW CATEGORIZATION OVERRIDES ---
+        if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return;
+
+        boolean isCiv = false;
+        if (Config.isInList(Config.CIV_STRUCTURES, structureType)) {
+            isCiv = true;
+        } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) {
+            isCiv = false;
+        } else {
+            // Default logic
+            isCiv = structureType.contains("village") || structureType.contains("city") || 
+                    structureType.contains("bastion") || structureType.contains("fortress") ||
+                    structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
         }
+        // ------------------------------------
         
-        boolean isCiv = structureType.contains("village") || structureType.contains("city") || 
-                        structureType.contains("bastion") || structureType.contains("fortress") ||
-                        structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
         String category = isCiv ? "civilization" : "adventure";
-        
         String rawType = structureType.contains(":") ? structureType.substring(structureType.indexOf(":") + 1) : structureType;
         
-        String name = "Unknown";
-        if (isCiv) {
-            name = NPCData.getRandomRealm(new java.util.Random());
-        } else {
-            name = formatName(rawType); 
-        }
-
+        String name = isCiv ? NPCData.getRandomRealm(new java.util.Random()) : formatName(rawType); 
         String formattedBiome = formatName(biomeRaw);
         String formattedType = formatName(rawType); 
         
         if (isCiv) {
-            addLore(structureId, name, "Discovering the history of this place...", category);
+            addLore(structureId, name, "Discovering the history of this place...", category, structureType);
             String apiKey = Config.API_KEY.get();
             if (apiKey != null && !apiKey.isEmpty()) {
                 GeminiClient.generateStructureLore(apiKey, structureId, formattedType, name, category, formattedBiome);
             }
         } else {
-            // NEW: No API call for adventure structures! Just save the generated name.
-            addLore(structureId, name, "A hidden adventure structure.", category);
-            System.out.println("[MC-AI Chat] Logged adventure structure: " + name);
+            addLore(structureId, name, "A hidden adventure structure.", category, structureType);
         }
     }
 
