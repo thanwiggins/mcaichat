@@ -161,6 +161,17 @@ public class AIChatCommand {
                         return 1;
                     })
                 )
+                
+                // --- INIT DEBUG COMMAND ---
+                .then(Commands.literal("init")
+                    .executes(context -> {
+                        ConversationManager.debugInit = !ConversationManager.debugInit;
+                        context.getSource().sendSystemMessage(Component.literal(
+                            "§eAI Chat Init Debugging is now: " + (ConversationManager.debugInit ? "§aON" : "§cOFF")
+                        ));
+                        return 1;
+                    })
+                )
         );
     }
 }

@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 
 public class PromptBuilder {
     private static final File PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_prompt.txt").toFile();
+    private static final File INIT_PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_init_prompt.txt").toFile(); // NEW
 
     private static final String DEFAULT_PROMPT = """
         You are an NPC in Minecraft. The player is chatting with you in-game.
@@ -55,8 +56,31 @@ public class PromptBuilder {
         {EXIGENT_CIRCUMSTANCES}
         """;
 
-    public static String getSystemPrompt(Player player, Entity target) {
-        String basePrompt = loadPromptFile();
+    // NEW: The default prompt for when the NPC starts the conversation
+    private static final String DEFAULT_INIT_PROMPT = """
+        You are an NPC in Minecraft. You are initiating a conversation with the player who just walked nearby.
+        Keep your response concise and natural. Do not include roleplay actions.
+        The following context will help you know how to address the player.
+        
+        === Ambient Details ===
+        {AMBIENT_DETAILS}
+        
+        === World Knowledge ===
+        {WORLD_KNOWLEDGE}
+        
+        === Personal Background ===
+        {PERSONAL_BACKGROUND}
+        
+        === Social Circle ===
+        {SOCIAL_CIRCLE}
+        
+        === Exigent Circumstances ===
+        {EXIGENT_CIRCUMSTANCES}
+        """;
+
+    public static String getSystemPrompt(Player player, Entity target, boolean isInitiating) {
+        // Choose which base prompt to load based on the boolean flag
+        String basePrompt = isInitiating ? loadInitPromptFile() : loadPromptFile();
         
         Level level = player.level();
         BlockPos pos = target.blockPosition();
@@ -84,6 +108,19 @@ public class PromptBuilder {
         } catch (IOException e) {
             e.printStackTrace();
             return DEFAULT_PROMPT;
+        }
+    }
+
+    // NEW: Loader for the initiation prompt
+    private static String loadInitPromptFile() {
+        try {
+            if (!INIT_PROMPT_FILE.exists()) {
+                Files.writeString(INIT_PROMPT_FILE.toPath(), DEFAULT_INIT_PROMPT);
+            }
+            return Files.readString(INIT_PROMPT_FILE.toPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return DEFAULT_INIT_PROMPT;
         }
     }
 
@@ -209,6 +246,24 @@ public class PromptBuilder {
         if (isCapableFighter) return "Warrior";
         if (isMerchant) return "Merchant";
         return "Citizen";
+    }
+    
+    public static String getSentimentColorCode(Player player, Entity target) {
+        String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
+        boolean isMonster = target instanceof Monster;
+        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+
+        if (isValarianFighter && target.getTeam() != null) {
+            if (target.isAlliedTo(player)) {
+                return "§a"; // Green (Friendly/Allied)
+            } else if (player.getTeam() != null) {
+                return "§c"; // Red (Hostile/Enemy Faction)
+            } else {
+                return "§e"; // Yellow (Suspicious/Unaligned)
+            }
+        }
+        
+        return isMonster ? "§c" : "§a"; // Red for monsters, Green for normal friendly entities
     }
 
     private static String buildPersonalBackground(Player player, Entity target) {

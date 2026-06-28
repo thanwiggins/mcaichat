@@ -60,16 +60,19 @@ public class ChatInterceptor {
         
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
         
-        String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity);
+        // Pass false here because the player is initiating
+        String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity, false);
         lastSystemPrompt = systemPrompt;
         lastUserMessage = message;
 
+        // Obtain the proper chat color for this entity
+        String colorCode = PromptBuilder.getSentimentColorCode(player, targetEntity);
+
         ConversationManager.addMessage("user", message, currentTick);
-        GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, currentTick);
+        GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, currentTick);
     }
 
     private static Entity getTargetEntity(Minecraft mc, Player player) {
-        // [Existing getTargetEntity logic Unchanged]
         HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();

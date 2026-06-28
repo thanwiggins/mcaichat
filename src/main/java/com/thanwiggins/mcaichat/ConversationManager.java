@@ -3,6 +3,7 @@ package com.thanwiggins.mcaichat;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.api.distmarker.Dist;
@@ -22,6 +23,9 @@ public class ConversationManager {
     public static long lastMessageTick = 0; 
     
     public static long lastInitiationTick = 0;
+    
+    // NEW: Debug toggle flag
+    public static boolean debugInit = false;
     
     // CHANGED: Replaced seenEntities Set with a Cooldown Map
     public static Map<UUID, Long> initiationCooldowns = new HashMap<>();
@@ -94,17 +98,43 @@ public class ConversationManager {
                 initiationCooldowns.put(target.getUUID(), currentTick);
                 
                 // 50% chance to initiate
-                if (Math.random() < 0.5) {
+                double roll = Math.random();
+                
+                // Output the debug roll result if enabled
+                if (debugInit) {
+                    mc.player.sendSystemMessage(Component.literal(
+                        "§e[Init Debug] §fRolled " + String.format("%.2f", roll) + " (Needs < 0.50) for " + target.getDisplayName().getString()
+                    ));
+                }
+
+                if (roll < 0.5) {
                     lastInitiationTick = currentTick;
                     startConversation(target, currentTick);
                     
                     String apiKey = Config.API_KEY.get();
                     if (apiKey != null && !apiKey.isEmpty()) {
-                        String sysPrompt = PromptBuilder.getSystemPrompt(mc.player, target);
+                        
+                        // Pass true here because the NPC is initiating
+                        String sysPrompt = PromptBuilder.getSystemPrompt(mc.player, target, true);
+                        
                         String name = target.getPersistentData().getString("mcaichat_name");
                         if (name.isEmpty()) name = target.getDisplayName().getString();
                         
-                        GeminiClient.initiateConversation(apiKey, sysPrompt, name, currentTick);
+                        // Grab the specific color string here based on the target entity
+                        String colorCode = PromptBuilder.getSentimentColorCode(mc.player, target);
+                        
+                        // If debug is enabled, print the full prompt to the chat AND the game console
+                        if (debugInit) {
+                            System.out.println("====== AI CHAT INIT DEBUG ======");
+                            System.out.println("ROLL: " + roll);
+                            System.out.println("PROMPT:\n" + sysPrompt);
+                            System.out.println("================================");
+                            
+                            mc.player.sendSystemMessage(Component.literal("§e[Init Debug] §fSending Initiation Prompt for " + name + " (Check game console for cleaner formatting)"));
+                            mc.player.sendSystemMessage(Component.literal("§7" + sysPrompt));
+                        }
+
+                        GeminiClient.initiateConversation(apiKey, sysPrompt, name, colorCode, currentTick);
                     }
                 }
             }

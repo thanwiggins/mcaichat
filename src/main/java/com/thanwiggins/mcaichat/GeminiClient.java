@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
 public class GeminiClient {
     private static final HttpClient client = HttpClient.newHttpClient();
 
-    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, long currentTick) {
+    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, String colorCode, long currentTick) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
@@ -55,7 +55,8 @@ public class GeminiClient {
 
                         // Add the model's reply to the history using the current game tick
                         ConversationManager.addMessage("model", reply, Minecraft.getInstance().level.getGameTime());
-                        Minecraft.getInstance().player.sendSystemMessage(Component.literal("§b[" + entityName + "]: §f" + reply.trim()));
+                        // Apply the requested color code to the whole message!
+                        Minecraft.getInstance().player.sendSystemMessage(Component.literal(colorCode + "[" + entityName + "]: " + reply.trim()));
                     } else {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode() + " - " + response.body()));
                     }
@@ -70,9 +71,9 @@ public class GeminiClient {
         });
     }
 
-    public static void initiateConversation(String apiKey, String systemPrompt, String entityName, long currentTick) {
+    public static void initiateConversation(String apiKey, String systemPrompt, String entityName, String colorCode, long currentTick) {
         ConversationManager.addMessage("user", "Please initiate a conversation with me naturally. Say hello!", currentTick);
-        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, currentTick);
+        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, currentTick);
     }
 
     public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick) {
@@ -90,7 +91,13 @@ public class GeminiClient {
                 }
 
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
-                String prompt = "Summarize the following conversation in 2-3 sentences. Focus on what happened, what you learned about the player, and important details to remember for next time. Combine it with the Previous Memory if relevant.\n\nPrevious Memory: " + memoryContext + "\n\nConversation:\n" + rawHistory.toString();
+                
+                // NEW: Updated prompt to strongly enforce a persistent, rolling memory
+                String prompt = "You are updating your memory dossier on your interactions the player. Below is your 'Previous Memory' and the 'Recent Conversation'. "
+                              + "Write a new, comprehensive memory summary (3-4 sentences) that retains all important historical details (like the player's name, past events, past attitudes, etc.) "
+                              + "AND integrates any new things learned from the recent conversation. DO NOT drop important past facts just because they weren't mentioned in the recent conversation.\n\n"
+                              + "Previous Memory: " + memoryContext + "\n\n"
+                              + "Recent Conversation:\n" + rawHistory.toString();
 
                 JsonObject body = new JsonObject();
                 JsonObject textPart = new JsonObject();
@@ -139,7 +146,6 @@ public class GeminiClient {
                         + category + " structure of type '" + structureType + "' named '" + structureName + "', located in a " + biome + " biome. "
                         + "Make it fit naturally into a fantasy Minecraft world. Do not use markdown or formatting, just plain text.";
 
-                // NEW: Debug Output before sending
                 if (ClientLoreManager.debugLore) {
                     Minecraft.getInstance().execute(() -> {
                         if (Minecraft.getInstance().player != null) {
@@ -180,7 +186,6 @@ public class GeminiClient {
                     ClientLoreManager.addLore(structureId, structureName, generatedLore, category);
                     System.out.println("[MC-AI Chat] Generated new lore for " + structureName + "!");
 
-                    // NEW: Debug Output after receiving
                     if (ClientLoreManager.debugLore) {
                         Minecraft.getInstance().execute(() -> {
                             if (Minecraft.getInstance().player != null) {
