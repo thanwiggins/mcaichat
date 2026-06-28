@@ -25,6 +25,9 @@ import java.util.Random;
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID)
 public class IdentityHandler {
 
+    // Toggle this to false to disable console spam once you fix the issue
+    private static final boolean DEBUG_ID_GEN = true;
+
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
         Entity entity = event.getEntity();
@@ -57,6 +60,10 @@ public class IdentityHandler {
                         ChunkPos chunkPos = new ChunkPos(pos);
                         int radius = 16; // 16 chunks = ~256 blocks
                         
+                        if (DEBUG_ID_GEN) {
+                            System.out.println("\n--- [ID DEBUG] Spawning " + entity.getName().getString() + " at " + pos.toShortString() + " ---");
+                        }
+
                         List<String> nearbyCivs = new ArrayList<>();
                         String homeId = "";
                         double closestCivDist = 50 * 50; // 50 blocks squared for "Home"
@@ -70,36 +77,56 @@ public class IdentityHandler {
                         for (int x = -radius; x <= radius; x++) {
                             for (int z = -radius; z <= radius; z++) {
                                 ChunkAccess chunk = serverLevel.getChunk(chunkPos.x + x, chunkPos.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
-                                if (chunk != null) {
-                                    for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
-                                        StructureStart start = entry.getValue();
-                                        if (start != null && start.isValid()) {
-                                            ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
-                                            if (key != null) {
-                                                String structType = key.getPath();
-                                                BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
-                                                double distSqr = pos.distSqr(startPos);
-                                                String structId = key.toString() + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+                                
+                                if (chunk == null) {
+                                    if (DEBUG_ID_GEN && x == 0 && z == 0) {
+                                        System.out.println("[ID DEBUG] Current chunk is NULL (Not loaded properly)");
+                                    }
+                                    continue;
+                                }
+
+                                for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
+                                    StructureStart start = entry.getValue();
+                                    if (start != null && start.isValid()) {
+                                        ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
+                                        if (key != null) {
+                                            String structType = key.getPath();
+                                            BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
+                                            double distSqr = pos.distSqr(startPos);
+                                            String structId = key.toString() + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+                                            
+                                            if (DEBUG_ID_GEN) {
+                                                System.out.println("[ID DEBUG] Found valid structure: " + structType);
+                                                System.out.println("    -> Structure Center: " + startPos.toShortString());
+                                                System.out.println("    -> Distance Squared: " + distSqr + " (Must be <= " + closestCivDist + " for Home)");
+                                            }
+
+                                            boolean isCiv = structType.contains("village") || structType.contains("city") || 
+                                                            structType.contains("bastion") || structType.contains("fortress") ||
+                                                            structType.contains("towns_and_towers") || structType.contains("valarian_conquest");
+                                            
+                                            if (isCiv) {
+                                                String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
+                                                if (distSqr <= closestCivDist) {
+                                                    closestCivDist = distSqr;
+                                                    homeId = structId;
+                                                    data.putString("mcaichat_home_id", homeId);
+                                                    data.putString("mcaichat_home_type", structType);
+                                                }
+                                                nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
                                                 
-                                                boolean isCiv = structType.contains("village") || structType.contains("city") || 
-                                                                structType.contains("bastion") || structType.contains("fortress") ||
-                                                                structType.contains("towns_and_towers") || structType.contains("valarian_conquest");
-                                                
-                                                if (isCiv) {
-                                                    String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                                    if (distSqr <= closestCivDist) {
-                                                        closestCivDist = distSqr;
-                                                        homeId = structId;
-                                                        data.putString("mcaichat_home_id", homeId);
-                                                        data.putString("mcaichat_home_type", structType);
-                                                    }
-                                                    nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
-                                                } else if (rollSecret) {
-                                                    if (distSqr < closestSecretDist) {
-                                                        closestSecretDist = distSqr;
-                                                        secretType = structType;
-                                                        secretX = startPos.getX();
-                                                        secretZ = startPos.getZ();
+                                                if (DEBUG_ID_GEN) {
+                                                    System.out.println("    -> Logged as a Civilization!");
+                                                }
+                                            } else if (rollSecret) {
+                                                if (distSqr < closestSecretDist) {
+                                                    closestSecretDist = distSqr;
+                                                    secretType = structType;
+                                                    secretX = startPos.getX();
+                                                    secretZ = startPos.getZ();
+                                                    
+                                                    if (DEBUG_ID_GEN) {
+                                                        System.out.println("    -> Logged as a Secret Adventure Structure!");
                                                     }
                                                 }
                                             }
@@ -109,6 +136,13 @@ public class IdentityHandler {
                             }
                         }
                         
+                        if (DEBUG_ID_GEN) {
+                            System.out.println("[ID DEBUG] Final assigned home: " + (homeId.isEmpty() ? "NONE" : homeId));
+                            System.out.println("[ID DEBUG] Total nearby civs found: " + nearbyCivs.size());
+                            System.out.println("[ID DEBUG] Secret structure known: " + (secretType.isEmpty() ? "NONE" : secretType));
+                            System.out.println("--------------------------------------------------\n");
+                        }
+
                         // Save Nearby Civilizations to NBT
                         if (!nearbyCivs.isEmpty()) {
                             ListTag civList = new ListTag();
