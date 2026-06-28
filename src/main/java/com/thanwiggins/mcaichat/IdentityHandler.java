@@ -69,7 +69,7 @@ public class IdentityHandler {
                         
                         for (int x = -radius; x <= radius; x++) {
                             for (int z = -radius; z <= radius; z++) {
-                                ChunkAccess chunk = serverLevel.getChunkSource().getChunkNow(chunkPos.x + x, chunkPos.z + z);
+                                ChunkAccess chunk = serverLevel.getChunk(chunkPos.x + x, chunkPos.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
                                 if (chunk != null) {
                                     for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
                                         StructureStart start = entry.getValue();

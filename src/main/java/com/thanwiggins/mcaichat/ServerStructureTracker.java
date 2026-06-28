@@ -41,7 +41,7 @@ public class ServerStructureTracker {
 
                 for (int x = -radiusChunks; x <= radiusChunks; x++) {
                     for (int z = -radiusChunks; z <= radiusChunks; z++) {
-                        ChunkAccess chunk = serverLevel.getChunkSource().getChunkNow(centerChunk.x + x, centerChunk.z + z);
+                        ChunkAccess chunk = serverLevel.getChunk(centerChunk.x + x, centerChunk.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
                         
                         if (chunk != null) {
                             Map<Structure, StructureStart> starts = chunk.getAllStarts();

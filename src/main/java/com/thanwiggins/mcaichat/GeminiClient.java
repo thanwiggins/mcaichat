@@ -56,7 +56,7 @@ public class GeminiClient {
                         // Add the model's reply to the history using the current game tick
                         ConversationManager.addMessage("model", reply, Minecraft.getInstance().level.getGameTime());
                         // Apply the requested color code to the whole message!
-                        Minecraft.getInstance().player.sendSystemMessage(Component.literal(colorCode + "[" + entityName + "]: " + reply.trim()));
+                        Minecraft.getInstance().player.sendSystemMessage(Component.literal(colorCode + "[" + entityName + "]: §f" + reply.trim()));
                     } else {
                         Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c[Gemini Error]: HTTP " + response.statusCode() + " - " + response.body()));
                     }
