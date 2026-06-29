@@ -7,6 +7,9 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.monster.Enemy;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -19,7 +22,7 @@ public class EntityConfigScreen extends Screen {
     private List<String> filteredEntities;
     
     public EntityConfigScreen(Screen previous) {
-        super(Component.literal("Configure Creature Categories"));
+        super(Component.literal("Configure Creatures & Whitelist"));
         this.previous = previous;
         this.allEntities = ForgeRegistries.ENTITY_TYPES.getKeys().stream()
             .map(ResourceLocation::toString)
@@ -61,16 +64,29 @@ public class EntityConfigScreen extends Screen {
             String entityId = filteredEntities.get(i);
             int yPos = yStart + ((i - startIdx) * 25);
             
-            String currentCat = "Default";
+            // --- WHITELIST TOGGLE BUTTON ---
+            boolean isWhitelisted = Config.isInList(Config.WHITELIST_ENTITIES, entityId);
+            Button whitelistBtn = Button.builder(Component.literal(isWhitelisted ? "Chat: ON" : "Chat: OFF"), b -> {
+                Config.setCategory(Config.WHITELIST_ENTITIES, entityId, !isWhitelisted);
+                this.init();
+            }).bounds(centerX - 35, yPos, 65, 20).build();
+            this.addRenderableWidget(whitelistBtn);
+
+            // --- AI CATEGORY CYCLE BUTTON ---
+            String currentCat = "";
             if (Config.isInList(Config.BLACKLIST_ENTITIES, entityId)) currentCat = "Ignored";
             else if (Config.isInList(Config.CUSTOM_MONSTERS, entityId)) currentCat = "Monster";
             else if (Config.isInList(Config.CUSTOM_WILDLIFE, entityId)) currentCat = "Wildlife";
+            else {
+                EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(new ResourceLocation(entityId));
+                boolean isMonster = type != null && (type.getCategory() == MobCategory.MONSTER || Enemy.class.isAssignableFrom(type.getBaseClass()));
+                currentCat = "Def. (" + (isMonster ? "Monster" : "Wild.") + ")";
+            }
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleEntityCategory(entityId);
                 this.init(); 
-            }).bounds(centerX + 20, yPos, 100, 20).build();
-            
+            }).bounds(centerX + 35, yPos, 105, 20).build();
             this.addRenderableWidget(cycleBtn);
         }
 
@@ -109,13 +125,13 @@ public class EntityConfigScreen extends Screen {
 
         for (int i = startIdx; i < endIdx; i++) {
             String entityId = filteredEntities.get(i);
-            int yPos = yStart + ((i - startIdx) * 25) + 5;
+            int yPos = yStart + ((i - startIdx) * 25) + 6;
             
             String displayStr = entityId;
-            if (this.font.width(displayStr) > 130) {
-                displayStr = this.font.plainSubstrByWidth(displayStr, 120) + "...";
+            if (this.font.width(displayStr) > 105) {
+                displayStr = this.font.plainSubstrByWidth(displayStr, 95) + "...";
             }
-            gui.drawString(this.font, displayStr, centerX - 120, yPos, 0xFFFFFF);
+            gui.drawString(this.font, displayStr, centerX - 145, yPos, 0xFFFFFF);
         }
 
         int maxPages = Math.max(1, (int) Math.ceil(filteredEntities.size() / (double) itemsPerPage));

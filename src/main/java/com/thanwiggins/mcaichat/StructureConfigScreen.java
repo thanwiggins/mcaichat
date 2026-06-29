@@ -1,9 +1,11 @@
 package com.thanwiggins.mcaichat;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -26,6 +28,13 @@ public class StructureConfigScreen extends Screen {
         structSet.addAll(Arrays.asList(Config.ADVENTURE_STRUCTURES.get().split(",")));
         structSet.addAll(Arrays.asList(Config.IGNORED_STRUCTURES.get().split(",")));
         structSet.remove("");
+        
+        // NEW: If currently inside a world, pull ALL structures from the dynamic datapack registry
+        if (Minecraft.getInstance().getConnection() != null) {
+            Minecraft.getInstance().getConnection().registryAccess().registry(Registries.STRUCTURE).ifPresent(registry -> {
+                registry.keySet().forEach(key -> structSet.add(key.toString()));
+            });
+        }
         
         this.allStructures = new ArrayList<>(structSet);
         Collections.sort(this.allStructures);
@@ -70,15 +79,21 @@ public class StructureConfigScreen extends Screen {
             String structId = filteredStructures.get(i);
             int yPos = yStart + ((i - startIdx) * 25);
             
-            String currentCat = "Default";
+            String currentCat = "";
             if (Config.isInList(Config.IGNORED_STRUCTURES, structId)) currentCat = "Ignored";
             else if (Config.isInList(Config.CIV_STRUCTURES, structId)) currentCat = "Civilization";
             else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structId)) currentCat = "Adventure";
+            else {
+                boolean isCiv = structId.contains("village") || structId.contains("city") || 
+                                structId.contains("bastion") || structId.contains("fortress") ||
+                                structId.contains("towns_and_towers") || structId.contains("valarian_conquest");
+                currentCat = "Default (" + (isCiv ? "Civ." : "Adv.") + ")";
+            }
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleStructureCategory(structId);
                 this.init(); 
-            }).bounds(centerX + 20, yPos, 100, 20).build();
+            }).bounds(centerX + 10, yPos, 120, 20).build();
             
             this.addRenderableWidget(cycleBtn);
         }
@@ -124,7 +139,7 @@ public class StructureConfigScreen extends Screen {
             if (this.font.width(displayStr) > 130) {
                 displayStr = this.font.plainSubstrByWidth(displayStr, 120) + "...";
             }
-            gui.drawString(this.font, displayStr, centerX - 120, yPos, 0xFFFFFF);
+            gui.drawString(this.font, displayStr, centerX - 130, yPos, 0xFFFFFF);
         }
 
         int maxPages = Math.max(1, (int) Math.ceil(filteredStructures.size() / (double) itemsPerPage));
