@@ -37,7 +37,8 @@ public class EntityConfigScreen extends Screen {
         int centerX = this.width / 2;
         int yStart = 40;
 
-        this.searchBox = new EditBox(this.font, centerX - 100, 15, 200, 20, Component.literal("Search"));
+        // Widened layout to match StructureConfigScreen
+        this.searchBox = new EditBox(this.font, centerX - 150, 15, 300, 20, Component.literal("Search"));
         this.searchBox.setResponder(text -> {
             this.filteredEntities = allEntities.stream()
                 .filter(e -> e.toLowerCase().contains(text.toLowerCase()))
@@ -51,11 +52,11 @@ public class EntityConfigScreen extends Screen {
         
         this.addRenderableWidget(Button.builder(Component.literal("<"), b -> {
             if (currentPage > 0) { currentPage--; this.init(); }
-        }).bounds(centerX - 130, 15, 20, 20).build());
+        }).bounds(centerX - 180, 15, 20, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal(">"), b -> {
             if (currentPage < maxPages - 1) { currentPage++; this.init(); }
-        }).bounds(centerX + 110, 15, 20, 20).build());
+        }).bounds(centerX + 160, 15, 20, 20).build());
 
         int startIdx = currentPage * itemsPerPage;
         int endIdx = Math.min(startIdx + itemsPerPage, filteredEntities.size());
@@ -69,7 +70,7 @@ public class EntityConfigScreen extends Screen {
             Button whitelistBtn = Button.builder(Component.literal(isWhitelisted ? "Chat: ON" : "Chat: OFF"), b -> {
                 Config.setCategory(Config.WHITELIST_ENTITIES, entityId, !isWhitelisted);
                 this.init();
-            }).bounds(centerX - 35, yPos, 65, 20).build();
+            }).bounds(centerX - 25, yPos, 70, 20).build();
             this.addRenderableWidget(whitelistBtn);
 
             // --- AI CATEGORY CYCLE BUTTON ---
@@ -86,13 +87,13 @@ public class EntityConfigScreen extends Screen {
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleEntityCategory(entityId);
                 this.init(); 
-            }).bounds(centerX + 35, yPos, 105, 20).build();
+            }).bounds(centerX + 50, yPos, 130, 20).build();
             this.addRenderableWidget(cycleBtn);
         }
 
         this.addRenderableWidget(Button.builder(Component.literal("Back"), b -> {
             this.minecraft.setScreen(this.previous);
-        }).bounds(centerX - 100, this.height - 30, 200, 20).build());
+        }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
     private void cycleEntityCategory(String id) {
@@ -128,10 +129,11 @@ public class EntityConfigScreen extends Screen {
             int yPos = yStart + ((i - startIdx) * 25) + 6;
             
             String displayStr = entityId;
-            if (this.font.width(displayStr) > 105) {
-                displayStr = this.font.plainSubstrByWidth(displayStr, 95) + "...";
+            // Increased text width limit to 145px and shifted left to match new layout
+            if (this.font.width(displayStr) > 145) {
+                displayStr = this.font.plainSubstrByWidth(displayStr, 135) + "...";
             }
-            gui.drawString(this.font, displayStr, centerX - 145, yPos, 0xFFFFFF);
+            gui.drawString(this.font, displayStr, centerX - 180, yPos, 0xFFFFFF);
         }
 
         int maxPages = Math.max(1, (int) Math.ceil(filteredEntities.size() / (double) itemsPerPage));

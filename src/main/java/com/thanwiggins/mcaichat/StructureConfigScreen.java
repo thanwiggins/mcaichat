@@ -5,10 +5,13 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import java.util.*;
 import java.util.stream.Collectors;
+
+// Structurify imports
+import com.faboslav.structurify.common.config.data.WorldgenDataProvider;
+import com.faboslav.structurify.common.config.data.StructureData;
 
 public class StructureConfigScreen extends Screen {
     private final Screen previous;
@@ -29,11 +32,10 @@ public class StructureConfigScreen extends Screen {
         structSet.addAll(Arrays.asList(Config.IGNORED_STRUCTURES.get().split(",")));
         structSet.remove("");
         
-        // NEW: If currently inside a world, pull ALL structures from the dynamic datapack registry
-        if (Minecraft.getInstance().getConnection() != null) {
-            Minecraft.getInstance().getConnection().registryAccess().registry(Registries.STRUCTURE).ifPresent(registry -> {
-                registry.keySet().forEach(key -> structSet.add(key.toString()));
-            });
+        // Pull the universal master list from Structurify
+        Map<String, StructureData> masterStructureList = WorldgenDataProvider.getStructures();
+        if (masterStructureList != null) {
+            masterStructureList.keySet().forEach(key -> structSet.add(key));
         }
         
         this.allStructures = new ArrayList<>(structSet);
@@ -47,13 +49,13 @@ public class StructureConfigScreen extends Screen {
         int centerX = this.width / 2;
         int yStart = 40;
 
-        this.searchBox = new EditBox(this.font, centerX - 100, 15, 200, 20, Component.literal("Search or Add ID"));
+        // Widened layout bounds
+        this.searchBox = new EditBox(this.font, centerX - 150, 15, 300, 20, Component.literal("Search or Add ID"));
         this.searchBox.setResponder(text -> {
             this.filteredStructures = allStructures.stream()
                 .filter(e -> e.toLowerCase().contains(text.toLowerCase()))
                 .collect(Collectors.toList());
                 
-            // Allow adding new structure overrides dynamically
             if (!text.isEmpty() && !allStructures.contains(text)) {
                 this.filteredStructures.add(0, text);
             }
@@ -66,11 +68,11 @@ public class StructureConfigScreen extends Screen {
         
         this.addRenderableWidget(Button.builder(Component.literal("<"), b -> {
             if (currentPage > 0) { currentPage--; this.init(); }
-        }).bounds(centerX - 130, 15, 20, 20).build());
+        }).bounds(centerX - 180, 15, 20, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal(">"), b -> {
             if (currentPage < maxPages - 1) { currentPage++; this.init(); }
-        }).bounds(centerX + 110, 15, 20, 20).build());
+        }).bounds(centerX + 160, 15, 20, 20).build());
 
         int startIdx = currentPage * itemsPerPage;
         int endIdx = Math.min(startIdx + itemsPerPage, filteredStructures.size());
@@ -90,17 +92,19 @@ public class StructureConfigScreen extends Screen {
                 currentCat = "Default (" + (isCiv ? "Civ." : "Adv.") + ")";
             }
 
+            // Widened cycle button to 160px
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleStructureCategory(structId);
                 this.init(); 
-            }).bounds(centerX + 10, yPos, 120, 20).build();
+            }).bounds(centerX + 10, yPos, 160, 20).build();
             
             this.addRenderableWidget(cycleBtn);
         }
 
+        // Widened back button to match search bar width
         this.addRenderableWidget(Button.builder(Component.literal("Back"), b -> {
             this.minecraft.setScreen(this.previous);
-        }).bounds(centerX - 100, this.height - 30, 200, 20).build());
+        }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
     private void cycleStructureCategory(String id) {
@@ -136,10 +140,11 @@ public class StructureConfigScreen extends Screen {
             int yPos = yStart + ((i - startIdx) * 25) + 5;
             
             String displayStr = structId;
-            if (this.font.width(displayStr) > 130) {
-                displayStr = this.font.plainSubstrByWidth(displayStr, 120) + "...";
+            // Increased text width limit to 180px and shifted left
+            if (this.font.width(displayStr) > 180) {
+                displayStr = this.font.plainSubstrByWidth(displayStr, 170) + "...";
             }
-            gui.drawString(this.font, displayStr, centerX - 130, yPos, 0xFFFFFF);
+            gui.drawString(this.font, displayStr, centerX - 180, yPos, 0xFFFFFF);
         }
 
         int maxPages = Math.max(1, (int) Math.ceil(filteredStructures.size() / (double) itemsPerPage));

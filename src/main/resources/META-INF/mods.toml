@@ -45,6 +45,13 @@ Allows players to talk to nearby entities using the Gemini AI API!
     ordering="NONE"
     side="BOTH"
 
+[[dependencies.mcaichat]]
+    modId="structurify"
+    mandatory=true
+    versionRange="[2.0.28,)"
+    ordering="AFTER"
+    side="BOTH"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.
