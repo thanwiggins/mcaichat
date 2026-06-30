@@ -32,6 +32,13 @@ public class StructureConfigScreen extends Screen {
         structSet.remove("");
         
         Map<String, StructureData> masterStructureList = WorldgenDataProvider.getStructures();
+        
+        // NEW: If the list is empty (because the game just started), force Structurify to build it
+        if (masterStructureList == null || masterStructureList.isEmpty()) {
+            WorldgenDataProvider.loadWorldgenData();
+            masterStructureList = WorldgenDataProvider.getStructures();
+        }
+        
         if (masterStructureList != null) {
             masterStructureList.keySet().forEach(key -> structSet.add(key));
         }
