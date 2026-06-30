@@ -180,7 +180,7 @@ public class PromptBuilder {
         if (!homeId.isEmpty()) {
             String homeType = formatName(data.getString("mcaichat_home_type"));
             ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
-            String homeName = (homeLore != null) ? homeLore.name : "Unknown " + homeType;
+            String homeName = (homeLore != null) ? homeLore.name : homeType; // Fix: Assigns structure type if generic
             String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
             knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
         } else {
@@ -188,8 +188,8 @@ public class PromptBuilder {
         }
         
         // 2. Surrounding Civilizations
-        if (data.contains("mcaichat_nearby_civs", 9)) { // 9 is ListTag
-            ListTag civList = data.getList("mcaichat_nearby_civs", 8); // 8 is StringTag
+        if (data.contains("mcaichat_nearby_civs", 9)) { 
+            ListTag civList = data.getList("mcaichat_nearby_civs", 8); 
             StringBuilder civsBuilder = new StringBuilder();
             
             for (int i = 0; i < civList.size(); i++) {
@@ -201,11 +201,10 @@ public class PromptBuilder {
                     int civX = Integer.parseInt(parts[3]);
                     int civZ = Integer.parseInt(parts[4]);
                     
-                    // Don't list their home again as a nearby civilization
                     if (civId.equals(homeId)) continue;
                     
                     ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
-                    String civName = (civLore != null) ? civLore.name : "An unknown " + civType.toLowerCase();
+                    String civName = (civLore != null) ? civLore.name : civType; // Fix: Assigns structure type if generic
                     String direction = getDirection(pos.getX(), pos.getZ(), civX, civZ);
                     
                     civsBuilder.append("- ").append(civName).append(" located to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
@@ -411,52 +410,67 @@ public class PromptBuilder {
             exigent.append("A dangerous fire is burning nearby! ");
         }
         
-        AABB dangerBox = target.getBoundingBox().inflate(24.0D); // Increased to 24 blocks to catch giant modded mobs
+        AABB dangerBox = target.getBoundingBox().inflate(24.0D);
 
+        // Removed the !AmbientCreature and !WaterAnimal exclusions
         List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox, 
             entity -> entity != target 
-                && entity != player // Ignore the player in the wildlife/monster list
+                && entity != player 
                 && !Config.isBlacklisted(entity) 
                 && !Config.isWhitelisted(entity)
-                && !(entity instanceof AmbientCreature) // Ignore bats
-                && !(entity instanceof WaterAnimal && !target.isUnderWater()) // Ignore fish unless NPC is swimming
         );
 
         List<String> hostileNames = new ArrayList<>();
+        List<String> creatureNames = new ArrayList<>();
         List<String> wildlifeNames = new ArrayList<>();
 
         for (LivingEntity entity : nearbyEntities) {
             String name = entity.getDisplayName().getString();
             String registryName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
             
-            // --- NEW: CATEGORY OVERRIDE ---
             boolean isHostile = false;
+            boolean isCreature = false;
+            boolean isWildlife = false;
 
             if (Config.isInList(Config.CUSTOM_MONSTERS, registryName)) {
                 isHostile = true;
+            } else if (Config.isInList(Config.CUSTOM_CREATURES, registryName)) {
+                isCreature = true;
             } else if (Config.isInList(Config.CUSTOM_WILDLIFE, registryName)) {
-                isHostile = false;
+                isWildlife = true;
             } else {
                 // Default logic
-                isHostile = (entity instanceof Enemy) || (entity.getType().getCategory() == MobCategory.MONSTER);
+                if (entity instanceof Enemy || entity.getType().getCategory() == MobCategory.MONSTER) {
+                    isHostile = true;
+                } else if (entity instanceof AmbientCreature || entity instanceof WaterAnimal) {
+                    isWildlife = true;
+                } else {
+                    isCreature = true;
+                }
             }
-            // ------------------------------
             
             if (isHostile) {
                 if (!hostileNames.contains(name)) hostileNames.add(name);
-            } else {
+            } else if (isWildlife) {
                 if (!wildlifeNames.contains(name)) wildlifeNames.add(name);
+            } else if (isCreature) {
+                if (!creatureNames.contains(name)) creatureNames.add(name);
             }
         }
 
         if (!hostileNames.isEmpty()) {
             String joinedHostiles = String.join(", ", hostileNames);
-            exigent.append("There are dangerous enemies nearby (").append(joinedHostiles).append(")! ");
+            exigent.append("There are dangerous monsters nearby (").append(joinedHostiles).append(")! ");
+        }
+
+        if (!creatureNames.isEmpty()) {
+            String joinedCreatures = String.join(", ", creatureNames);
+            exigent.append("There are creatures roaming nearby (").append(joinedCreatures).append("). ");
         }
 
         if (!wildlifeNames.isEmpty()) {
             String joinedWildlife = String.join(", ", wildlifeNames);
-            exigent.append("There is local wildlife nearby (").append(joinedWildlife).append("). ");
+            exigent.append("There is ambient wildlife nearby (").append(joinedWildlife).append("). ");
         }
         
         if (target instanceof LivingEntity livingTarget) {

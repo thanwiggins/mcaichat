@@ -30,7 +30,7 @@ public class ClientLoreManager {
         public String name;
         public String background;
         public String type;
-        public String fullKey; // NEW
+        public String fullKey;
 
         public StructureLore(String name, String background, String type, String fullKey) {
             this.name = name;
@@ -76,13 +76,11 @@ public class ClientLoreManager {
         return loreMap.get(structureId);
     }
 
-    // NEW: Pass fullKey so the config UI can read it
     public static void addLore(String structureId, String name, String background, String type, String fullKey) {
         loreMap.put(structureId, new StructureLore(name, background, type, fullKey));
         saveWorldLore();
     }
     
-    // NEW: Specifically update just the AI's generated text without overwriting the key
     public static void updateLoreBackground(String structureId, String background) {
         if (loreMap.containsKey(structureId)) {
             loreMap.get(structureId).background = background;
@@ -90,7 +88,6 @@ public class ClientLoreManager {
         }
     }
 
-    // NEW: Fetch all discovered structures for the config UI
     public static Set<String> getKnownStructureKeys() {
         Set<String> keys = new HashSet<>();
         for (StructureLore lore : loreMap.values()) {
@@ -113,41 +110,47 @@ public class ClientLoreManager {
         
         if (loreMap.containsKey(structureId)) return;
         
-        // --- NEW CATEGORIZATION OVERRIDES ---
         if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return;
 
         boolean isCiv = false;
+        boolean isNomad = false;
+
         if (Config.isInList(Config.CIV_STRUCTURES, structureType)) {
             isCiv = true;
+        } else if (Config.isInList(Config.NOMAD_STRUCTURES, structureType)) {
+            isNomad = true;
         } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) {
-            isCiv = false;
+            // Both remain false (Adventure Structure)
         } else {
-            // Default logic
             isCiv = structureType.contains("village") || structureType.contains("city") || 
                     structureType.contains("bastion") || structureType.contains("fortress") ||
                     structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
         }
-        // ------------------------------------
         
-        String category = isCiv ? "civilization" : "adventure";
         String rawType = structureType.contains(":") ? structureType.substring(structureType.indexOf(":") + 1) : structureType;
-        
-        String name = isCiv ? NPCData.getRandomRealm(new java.util.Random()) : formatName(rawType); 
         String formattedBiome = formatName(biomeRaw);
         String formattedType = formatName(rawType); 
         
         if (isCiv) {
+            String category = "civilization";
+            String name = NPCData.getRandomRealm(new java.util.Random()); 
             addLore(structureId, name, "Discovering the history of this place...", category, structureType);
             String apiKey = Config.API_KEY.get();
             if (apiKey != null && !apiKey.isEmpty()) {
                 GeminiClient.generateStructureLore(apiKey, structureId, formattedType, name, category, formattedBiome);
             }
+        } else if (isNomad) {
+            String category = "nomad";
+            String name = formattedType; // No random name assigned
+            addLore(structureId, name, "A nomadic settlement.", category, structureType);
+            // Intentionally bypassing Gemini Lore generation for Nomads
         } else {
-            addLore(structureId, name, "A hidden adventure structure.", category, structureType);
+            String category = "adventure";
+            addLore(structureId, formattedType, "A hidden adventure structure.", category, structureType);
         }
     }
 
-    private static String formatName(String input) {
+    public static String formatName(String input) {
         if (input == null || input.isEmpty()) return input;
         String[] words = input.replace("_", " ").split("\\s+");
         StringBuilder sb = new StringBuilder();

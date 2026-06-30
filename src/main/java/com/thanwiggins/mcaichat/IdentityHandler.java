@@ -29,7 +29,6 @@ import java.util.Random;
 public class IdentityHandler {
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final boolean DEBUG_ID_GEN = false; // Turned off to prevent spam
 
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
@@ -38,7 +37,6 @@ public class IdentityHandler {
         if (Config.isWhitelisted(entity)) {
             CompoundTag data = entity.getPersistentData();
             
-            // Only assign Name and Personality on spawn. World Knowledge is deferred!
             if (!data.contains("mcaichat_personality")) {
                 Random random = new Random(entity.getUUID().getLeastSignificantBits());
                 String name = NPCData.getRandomName(random);
@@ -55,7 +53,6 @@ public class IdentityHandler {
         }
     }
 
-    // This is now called from ServerStructureTracker when a player gets close!
     public static void generateWorldKnowledge(Entity entity, ServerLevel serverLevel) {
         CompoundTag data = entity.getPersistentData();
         BlockPos pos = entity.blockPosition();
@@ -67,14 +64,9 @@ public class IdentityHandler {
         String homeId = "";
         double closestCivDist = 50 * 50; 
         
-        // --- 1. LOG THE INITIAL ROLL ---
         boolean rollSecret = random.nextInt(100) < 5;
         String npcName = data.getString("mcaichat_name");
         if (npcName.isEmpty()) npcName = "Unknown NPC";
-        
-        LOGGER.info("[Secret Debug] Generating World Knowledge for: " + npcName);
-        LOGGER.info("[Secret Debug] Did " + npcName + " pass the 5% secret roll? " + (rollSecret ? "YES!" : "No."));
-        // -------------------------------
         
         double closestSecretDist = Double.MAX_VALUE;
         String secretType = "";
@@ -91,32 +83,32 @@ public class IdentityHandler {
                     if (start != null && start.isValid()) {
                         ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
                         if (key != null) {
-                            String fullKey = key.toString(); // e.g. "valarian_conquest:visgothian_outpost"
+                            String fullKey = key.toString(); 
                             String structType = key.getPath();
                             BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                             double distSqr = pos.distSqr(startPos);
                             String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
                             
-                            // --- NEW: CATEGORY OVERRIDE ---
                             if (Config.isInList(Config.IGNORED_STRUCTURES, fullKey)) continue;
 
                             boolean isCiv = false;
+                            boolean isNomad = false;
                             boolean isAdv = false;
 
                             if (Config.isInList(Config.CIV_STRUCTURES, fullKey)) {
                                 isCiv = true;
+                            } else if (Config.isInList(Config.NOMAD_STRUCTURES, fullKey)) {
+                                isNomad = true;
                             } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, fullKey)) {
                                 isAdv = true;
                             } else {
-                                // Default Logic
                                 isCiv = fullKey.contains("village") || fullKey.contains("city") || 
                                                 fullKey.contains("bastion") || fullKey.contains("fortress") ||
                                                 fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
-                                isAdv = !isCiv; // By default everything not a civilization is an adventure
+                                if (!isCiv) isAdv = true; 
                             }
-                            // ------------------------------
                             
-                            if (isCiv) {
+                            if (isCiv || isNomad) {
                                 String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
                                 
                                 if (start.getBoundingBox().isInside(pos) || distSqr <= closestCivDist) {
@@ -148,20 +140,12 @@ public class IdentityHandler {
             data.put("mcaichat_nearby_civs", civList);
         }
         
-        // --- 2. LOG THE FINAL OUTCOME ---
-        if (rollSecret) {
-            if (!secretType.isEmpty()) {
-                LOGGER.info("[Secret Debug] SUCCESS: " + npcName + " learned about a hidden '" + secretType + "' at X:" + secretX + " Z:" + secretZ);
-                data.putString("mcaichat_secret_type", secretType);
-                data.putInt("mcaichat_secret_x", secretX);
-                data.putInt("mcaichat_secret_z", secretZ);
-            } else {
-                LOGGER.info("[Secret Debug] FAILED: " + npcName + " passed the roll, but NO adventure structures were found within 16 chunks.");
-            }
+        if (rollSecret && !secretType.isEmpty()) {
+            data.putString("mcaichat_secret_type", secretType);
+            data.putInt("mcaichat_secret_x", secretX);
+            data.putInt("mcaichat_secret_z", secretZ);
         }
-        // --------------------------------
 
-        // Failsafe: Mark that we completed the scan so we don't scan this NPC again
         if (!data.contains("mcaichat_home_id")) {
             data.putString("mcaichat_home_id", "none");
         }
