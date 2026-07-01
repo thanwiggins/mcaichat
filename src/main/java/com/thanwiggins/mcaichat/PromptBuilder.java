@@ -42,9 +42,8 @@ public class PromptBuilder {
     private static final File INIT_PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_init_prompt.txt").toFile(); // NEW
 
     private static final String DEFAULT_PROMPT = """
-        You are an NPC in Minecraft. The player is chatting with you in-game.
-        Keep your responses concise and natural. Do not include roleplay actions.
-        The following context will help you know how to respond and how to act towards the player.
+        You are a character in Minecraft conversing with a player in real-time.
+        The following raw context sections define your current environment, your history, your background, and immediate events happening around you.
         
         === Ambient Details ===
         {AMBIENT_DETAILS}
@@ -60,13 +59,18 @@ public class PromptBuilder {
         
         === Exigent Circumstances ===
         {EXIGENT_CIRCUMSTANCES}
+        
+        [CRITICAL OPERATION & DIALOGUE RULES]
+        Review all context above, and generate your response using the following strict priority guidelines:
+        1. CORE DRIVERS (HIGHEST PRIORITY): Your response must be driven entirely by your designated Personality and your current Sentiment/Faction Standing towards the player. This defines your active tone, vocabulary, and mood. Keep responses concise and natural.
+        2. SITUATIONAL REACTIVITY (MEDIUM PRIORITY): As the conversation progresses, weave in relevant facts from Exigent Circumstances, World Knowledge, or past Memories organically based on your Entity Type and Capabilities.
+           - ANTI-REPETITION CONSTRAINT: Never act like a mechanical game notification state tracker. Avoid repeating static updates or useless environmental facts. React naturally and act as a character in a fantasy RPG story, filtering it through your character's personality and background, rather than sounding like a cheap robot. Acknowledge situational changes with realistic variance, then shift focus forward.
+        3. BACKGROUND SUBTEXT (LOWEST PRIORITY): Treat Ambient Details, Trading Stock details, and your Social Circle roster as passive background that can be referred to when it comes up in a conversation. Do not list items like a catalog or randomly name-drop roommates unless explicitly asked or contextually critical.
         """;
 
-    // NEW: The default prompt for when the NPC starts the conversation
     private static final String DEFAULT_INIT_PROMPT = """
-        You are an NPC in Minecraft. You are initiating a conversation with the player who just walked nearby.
-        Keep your response concise and natural. Do not include roleplay actions.
-        The following context will help you know how to address the player.
+        You are a character in Minecraft. You are initiating a conversation with a player who just walked nearby.
+        The following raw context sections define your current environment, your history, your background, and immediate events happening around you.
         
         === Ambient Details ===
         {AMBIENT_DETAILS}
@@ -82,6 +86,13 @@ public class PromptBuilder {
         
         === Exigent Circumstances ===
         {EXIGENT_CIRCUMSTANCES}
+        
+        [CRITICAL OPERATION & GREETING RULES]
+        Review all context above, and generate your greeting using the following strict priority guidelines:
+        1. CORE DRIVERS (HIGHEST PRIORITY): Your initiation dialogue must be driven by your designated Personality and your current Sentiment/Faction Standing. This dictates your tone, greeting style, and character voice. Keep it concise.
+        2. SITUATIONAL REACTIVITY (MEDIUM PRIORITY): Look at Exigent Circumstances or World Knowledge to determine *why* you are calling out to the player.
+           - ANTI-REPETITION CONSTRAINT: Never act like a mechanical game status monitor. Avoid repeating useless facts or stale text. Do not repeatedly yell mechanical warnings. React naturally and act as a character in a fantasy RPG story, filtering it through your character's personality and background, rather than sounding like a cheap robot.
+        3. BACKGROUND SUBTEXT (LOWEST PRIORITY): Treat Ambient Details, your Name, your specific Trading Stock catalog, and your Social Circle roster as passive subtext. Do not introduce your trading options or roommate details in your greeting unless it is explicitly context-critical to a high-priority situational trigger.
         """;
 
     public static String getSystemPrompt(Player player, Entity target, boolean isInitiating) {
@@ -180,7 +191,13 @@ public class PromptBuilder {
         if (!homeId.isEmpty()) {
             String homeType = formatName(data.getString("mcaichat_home_type"));
             ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
-            String homeName = (homeLore != null) ? homeLore.name : homeType; // Fix: Assigns structure type if generic
+            String homeName = (homeLore != null) ? homeLore.name : homeType;
+            
+            // --- NEW: Append (here) if currently inside their home structure ---
+            if (homeId.equals(ClientLoreManager.currentStructureId)) {
+                homeName += " (here)";
+            }
+            
             String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
             knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
         } else {
@@ -204,7 +221,13 @@ public class PromptBuilder {
                     if (civId.equals(homeId)) continue;
                     
                     ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
-                    String civName = (civLore != null) ? civLore.name : civType; // Fix: Assigns structure type if generic
+                    String civName = (civLore != null) ? civLore.name : civType; 
+                    
+                    // --- NEW: Append the structure type if a custom name was assigned ---
+                    if (civLore != null && !civLore.name.equals(civType)) {
+                        civName += " (" + civType + ")";
+                    }
+                    
                     String direction = getDirection(pos.getX(), pos.getZ(), civX, civZ);
                     
                     civsBuilder.append("- ").append(civName).append(" located to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");

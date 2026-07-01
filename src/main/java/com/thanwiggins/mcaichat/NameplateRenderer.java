@@ -13,9 +13,6 @@ import net.minecraftforge.fml.common.Mod;
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, value = Dist.CLIENT)
 public class NameplateRenderer {
 
-    // NEW: Add a static flag for the secret debug mode
-    public static boolean debugSecret = false; 
-
     @SubscribeEvent
     public static void onRenderNameplate(RenderNameTagEvent event) {
         Entity entity = event.getEntity();
@@ -34,8 +31,8 @@ public class NameplateRenderer {
                     colorCode = PromptBuilder.getSentimentColorCode(player, entity);
                 }
 
-                // NEW: Override the color code if debug mode is on and they know a secret
-                if (debugSecret && data.contains("mcaichat_secret_type")) {
+                // NEW: Permanently override the color code if they know a secret
+                if (data.contains("mcaichat_secret_type")) {
                     colorCode = "§b"; // Aqua/Blue color
                 }
                 
