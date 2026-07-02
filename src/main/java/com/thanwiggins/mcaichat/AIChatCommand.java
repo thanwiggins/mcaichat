@@ -1,19 +1,15 @@
 package com.thanwiggins.mcaichat;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.commands.arguments.ResourceLocationArgument;
-import net.minecraft.commands.synchronization.SuggestionProviders;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, value = Dist.CLIENT)
 public class AIChatCommand {
@@ -26,131 +22,31 @@ public class AIChatCommand {
                 // --- DEBUG COMMAND ---
                 .then(Commands.literal("debug")
                     .executes(context -> {
-                        String sysPrompt = ChatInterceptor.lastSystemPrompt;
-                        String userMsg = ChatInterceptor.lastUserMessage;
-                        
+                        // Show whichever prompt actually went out most recently - a reactive
+                        // player-triggered chat, or an NPC-initiated conversation.
+                        boolean initWasLast = ConversationManager.lastInitSystemPromptTick > ChatInterceptor.lastSystemPromptTick;
+
+                        String source = initWasLast ? "NPC-Initiated Conversation" : "Reactive (Player Message)";
+                        String sysPrompt = initWasLast ? ConversationManager.lastInitSystemPrompt : ChatInterceptor.lastSystemPrompt;
+                        String userMsg = initWasLast ? "(none - " + ConversationManager.lastInitTargetName + " spoke first)" : ChatInterceptor.lastUserMessage;
+
                         // Print to the background game console for easy copy/pasting
                         System.out.println("====== AI CHAT DEBUG ======");
+                        System.out.println("SOURCE: " + source);
                         System.out.println("SYSTEM PROMPT:\n" + sysPrompt);
                         System.out.println("USER MESSAGE:\n" + userMsg);
                         System.out.println("===========================");
 
                         // Print to the in-game chat box
-                        context.getSource().sendSystemMessage(Component.literal("§e--- LAST PROMPT SENT ---"));
+                        context.getSource().sendSystemMessage(Component.literal("§e--- LAST PROMPT SENT (" + source + ") ---"));
                         context.getSource().sendSystemMessage(Component.literal("§bSystem: §f" + sysPrompt));
                         context.getSource().sendSystemMessage(Component.literal("§bUser: §f" + userMsg));
                         context.getSource().sendSystemMessage(Component.literal("§7(Check your game console/logs to see the cleanly formatted version)"));
-                        
+
                         return 1;
                     })
                 )
-                
-                // --- WHITELIST COMMANDS ---
-                .then(Commands.literal("whitelist")
-                    .then(Commands.literal("add")
-                        .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            .suggests(SuggestionProviders.SUMMONABLE_ENTITIES)
-                            .executes(context -> {
-                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
-                                String currentWhitelist = Config.WHITELIST_ENTITIES.get();
-                                String newEntityStr = entityId.toString();
 
-                                if (!currentWhitelist.contains(newEntityStr)) {
-                                    String updatedList = currentWhitelist.isEmpty() ? newEntityStr : currentWhitelist + "," + newEntityStr;
-                                    Config.WHITELIST_ENTITIES.set(updatedList);
-                                    context.getSource().sendSystemMessage(Component.literal("§aAdded " + newEntityStr + " to the AI Chat whitelist!"));
-                                } else {
-                                    context.getSource().sendSystemMessage(Component.literal("§c" + newEntityStr + " is already whitelisted."));
-                                }
-                                return 1;
-                            })
-                        )
-                    )
-                    .then(Commands.literal("remove")
-                        .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            .suggests((context, builder) -> {
-                                String currentWhitelist = Config.WHITELIST_ENTITIES.get();
-                                if (currentWhitelist == null || currentWhitelist.isEmpty()) {
-                                    return builder.buildFuture();
-                                }
-                                return SharedSuggestionProvider.suggest(Arrays.stream(currentWhitelist.split(",")).map(String::trim), builder);
-                            })
-                            .executes(context -> {
-                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
-                                String currentWhitelist = Config.WHITELIST_ENTITIES.get();
-                                String removeEntityStr = entityId.toString();
-
-                                List<String> entities = Arrays.stream(currentWhitelist.split(","))
-                                        .map(String::trim)
-                                        .collect(Collectors.toList());
-
-                                if (entities.contains(removeEntityStr)) {
-                                    entities.remove(removeEntityStr);
-                                    String updatedList = String.join(",", entities);
-                                    Config.WHITELIST_ENTITIES.set(updatedList);
-                                    context.getSource().sendSystemMessage(Component.literal("§eRemoved " + removeEntityStr + " from the AI Chat whitelist."));
-                                } else {
-                                    context.getSource().sendSystemMessage(Component.literal("§c" + removeEntityStr + " is not in the whitelist."));
-                                }
-                                return 1;
-                            })
-                        )
-                    )
-                )
-
-                // --- BLACKLIST COMMANDS ---
-                .then(Commands.literal("blacklist")
-                    .then(Commands.literal("add")
-                        .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            .suggests(SuggestionProviders.SUMMONABLE_ENTITIES)
-                            .executes(context -> {
-                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
-                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
-                                String newEntityStr = entityId.toString();
-
-                                if (!currentBlacklist.contains(newEntityStr)) {
-                                    String updatedList = currentBlacklist.isEmpty() ? newEntityStr : currentBlacklist + "," + newEntityStr;
-                                    Config.BLACKLIST_ENTITIES.set(updatedList);
-                                    context.getSource().sendSystemMessage(Component.literal("§aAdded " + newEntityStr + " to the AI Chat blacklist!"));
-                                } else {
-                                    context.getSource().sendSystemMessage(Component.literal("§c" + newEntityStr + " is already blacklisted."));
-                                }
-                                return 1;
-                            })
-                        )
-                    )
-                    .then(Commands.literal("remove")
-                        .then(Commands.argument("entity", ResourceLocationArgument.id())
-                            .suggests((context, builder) -> {
-                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
-                                if (currentBlacklist == null || currentBlacklist.isEmpty()) {
-                                    return builder.buildFuture();
-                                }
-                                return SharedSuggestionProvider.suggest(Arrays.stream(currentBlacklist.split(",")).map(String::trim), builder);
-                            })
-                            .executes(context -> {
-                                ResourceLocation entityId = context.getArgument("entity", ResourceLocation.class);
-                                String currentBlacklist = Config.BLACKLIST_ENTITIES.get();
-                                String removeEntityStr = entityId.toString();
-
-                                List<String> entities = Arrays.stream(currentBlacklist.split(","))
-                                        .map(String::trim)
-                                        .collect(Collectors.toList());
-
-                                if (entities.contains(removeEntityStr)) {
-                                    entities.remove(removeEntityStr);
-                                    String updatedList = String.join(",", entities);
-                                    Config.BLACKLIST_ENTITIES.set(updatedList);
-                                    context.getSource().sendSystemMessage(Component.literal("§eRemoved " + removeEntityStr + " from the AI Chat blacklist."));
-                                } else {
-                                    context.getSource().sendSystemMessage(Component.literal("§c" + removeEntityStr + " is not in the blacklist."));
-                                }
-                                return 1;
-                            })
-                        )
-                    )
-                )
-                
                 // --- LORE DEBUG COMMAND ---
                 .then(Commands.literal("lore")
                     .executes(context -> {
@@ -169,6 +65,46 @@ public class AIChatCommand {
                         context.getSource().sendSystemMessage(Component.literal(
                             "§eAI Chat Init Debugging is now: " + (ConversationManager.debugInit ? "§aON" : "§cOFF")
                         ));
+                        return 1;
+                    })
+                )
+
+                // --- FIND ROOST DEBUG COMMAND ---
+                .then(Commands.literal("findroost")
+                    .executes(context -> {
+                        Minecraft mc = Minecraft.getInstance();
+                        if (mc.player == null || mc.level == null) return 0;
+
+                        if (!DragonRoostFinder.isIceAndFireLoaded()) {
+                            context.getSource().sendSystemMessage(Component.literal("§cIce and Fire isn't installed - nothing to find."));
+                            return 0;
+                        }
+
+                        MinecraftServer server = mc.getSingleplayerServer();
+                        if (server == null) {
+                            context.getSource().sendSystemMessage(Component.literal("§cThis command only works while hosting the world (singleplayer or LAN)."));
+                            return 0;
+                        }
+
+                        ServerLevel serverLevel = server.getLevel(mc.level.dimension());
+                        if (serverLevel == null) return 0;
+
+                        BlockPos playerPos = mc.player.blockPosition();
+                        var roosts = DragonRoostFinder.findAll(serverLevel, playerPos, 512.0D);
+
+                        if (roosts.isEmpty()) {
+                            context.getSource().sendSystemMessage(Component.literal("§eNo dragon roosts found within 512 blocks."));
+                            return 1;
+                        }
+
+                        context.getSource().sendSystemMessage(Component.literal("§e--- Found " + roosts.size() + " Roost(s) ---"));
+                        for (DragonRoostFinder.Roost roost : roosts) {
+                            double distance = Math.sqrt(playerPos.distSqr(roost.pos()));
+                            context.getSource().sendSystemMessage(Component.literal(
+                                "§a" + roost.type() + " §7at " + roost.pos().toShortString() +
+                                " §7(" + Math.round(distance) + " blocks away, biome: " + roost.biome() + ")"
+                            ));
+                        }
                         return 1;
                     })
                 )

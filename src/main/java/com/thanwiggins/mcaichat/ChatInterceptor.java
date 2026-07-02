@@ -19,6 +19,7 @@ public class ChatInterceptor {
 
     public static String lastSystemPrompt = "No prompt sent yet.";
     public static String lastUserMessage = "No message sent yet.";
+    public static long lastSystemPromptTick = -1;
 
     @SubscribeEvent
     public static void onClientChat(ClientChatEvent event) {
@@ -64,6 +65,7 @@ public class ChatInterceptor {
         String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity, false);
         lastSystemPrompt = systemPrompt;
         lastUserMessage = message;
+        lastSystemPromptTick = currentTick;
 
         String colorCode = PromptBuilder.getSentimentColorCode(player, targetEntity);
 

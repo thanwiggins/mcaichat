@@ -28,8 +28,12 @@ public class ConversationManager {
     
     // --- NEW: Track who started it ---
     public static boolean isNpcInitiated = false;
-    
+
     public static Map<UUID, Long> initiationCooldowns = new HashMap<>();
+
+    public static String lastInitSystemPrompt = "No initiation sent yet.";
+    public static String lastInitTargetName = "";
+    public static long lastInitSystemPromptTick = -1;
 
     // --- UPDATED: Added the boolean parameter ---
     public static void startConversation(Entity target, long currentTick, boolean npcInitiated) {
@@ -126,10 +130,14 @@ public class ConversationManager {
                     if (apiKey != null && !apiKey.isEmpty()) {
                         
                         String sysPrompt = PromptBuilder.getSystemPrompt(mc.player, target, true);
-                        
+
                         String name = target.getPersistentData().getString("mcaichat_name");
                         if (name.isEmpty()) name = target.getDisplayName().getString();
-                        
+
+                        lastInitSystemPrompt = sysPrompt;
+                        lastInitTargetName = name;
+                        lastInitSystemPromptTick = currentTick;
+
                         String colorCode = PromptBuilder.getSentimentColorCode(mc.player, target);
                         
                         if (debugInit) {

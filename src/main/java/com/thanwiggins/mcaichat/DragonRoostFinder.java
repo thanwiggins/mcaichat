@@ -8,6 +8,8 @@ import net.minecraft.world.phys.AABB;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -23,13 +25,22 @@ public class DragonRoostFinder {
 
     public record Roost(String id, String type, String biome, BlockPos pos, double distSqr) {}
 
+    public static boolean isIceAndFireLoaded() {
+        return ICEANDFIRE_LOADED;
+    }
+
     public static Roost findNearest(ServerLevel level, BlockPos origin, double searchRadius) {
-        if (!ICEANDFIRE_LOADED) return null;
+        List<Roost> all = findAll(level, origin, searchRadius);
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    public static List<Roost> findAll(ServerLevel level, BlockPos origin, double searchRadius) {
+        if (!ICEANDFIRE_LOADED) return List.of();
 
         AABB searchBox = new AABB(origin).inflate(searchRadius);
         List<Entity> dragons = level.getEntities((Entity) null, searchBox, DragonRoostFinder::isDragon);
 
-        Roost closest = null;
+        List<Roost> roosts = new ArrayList<>();
 
         for (Entity dragon : dragons) {
             String element = getDragonElement(dragon);
@@ -43,15 +54,14 @@ public class DragonRoostFinder {
             // Treat the roost as having a ~20 block radius so it wins ties against overlapping vanilla structures
             double actualDist = distSqr <= 400 ? 0 : distSqr;
 
-            if (closest == null || actualDist < closest.distSqr()) {
-                String fullKey = "iceandfire:" + element + "_dragon_roost";
-                String id = fullKey + "_" + (homePos.getX() >> 4) + "_" + (homePos.getZ() >> 4);
-                String biome = level.getBiome(homePos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                closest = new Roost(id, fullKey, biome, homePos, actualDist);
-            }
+            String fullKey = "iceandfire:" + element + "_dragon_roost";
+            String id = fullKey + "_" + (homePos.getX() >> 4) + "_" + (homePos.getZ() >> 4);
+            String biome = level.getBiome(homePos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
+            roosts.add(new Roost(id, fullKey, biome, homePos, actualDist));
         }
 
-        return closest;
+        roosts.sort(Comparator.comparingDouble(Roost::distSqr));
+        return roosts;
     }
 
     private static boolean isDragon(Entity entity) {
