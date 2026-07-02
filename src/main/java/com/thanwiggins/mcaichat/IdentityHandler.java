@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob; // NEW IMPORT
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -49,6 +50,13 @@ public class IdentityHandler {
                     entity.setCustomName(Component.literal(name));
                     entity.setCustomNameVisible(true);
                 }
+            }
+            
+            // --- NEW: Inject the Chatting Goal on the Server Side ---
+            if (!event.getLevel().isClientSide() && entity instanceof Mob mob) {
+                // Priority 3 puts it below immediate survival mechanics (fleeing, attacking) 
+                // but above ambient wandering and looking randomly.
+                mob.goalSelector.addGoal(3, new ChattingGoal(mob));
             }
         }
     }

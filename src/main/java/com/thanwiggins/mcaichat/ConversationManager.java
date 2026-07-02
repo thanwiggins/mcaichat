@@ -24,16 +24,21 @@ public class ConversationManager {
     
     public static long lastInitiationTick = 0;
     
-    // NEW: Debug toggle flag
     public static boolean debugInit = false;
     
-    // CHANGED: Replaced seenEntities Set with a Cooldown Map
+    // --- NEW: Track who started it ---
+    public static boolean isNpcInitiated = false;
+    
     public static Map<UUID, Long> initiationCooldowns = new HashMap<>();
 
-    public static void startConversation(Entity target, long currentTick) {
+    // --- UPDATED: Added the boolean parameter ---
+    public static void startConversation(Entity target, long currentTick, boolean npcInitiated) {
         activeEntity = target;
         conversationHistory = new JsonArray();
         lastMessageTick = currentTick;
+        isNpcInitiated = npcInitiated;
+        
+        NetworkHandler.INSTANCE.sendToServer(new ConversationStatePacket(target.getId(), true));
     }
 
     public static void endConversation(long currentTick) {
@@ -42,6 +47,8 @@ public class ConversationManager {
             if (apiKey != null && !apiKey.isEmpty()) {
                 GeminiClient.summarizeConversation(apiKey, activeEntity, conversationHistory.deepCopy(), currentTick);
             }
+            
+            NetworkHandler.INSTANCE.sendToServer(new ConversationStatePacket(activeEntity.getId(), false));
         }
         activeEntity = null;
         conversationHistory = new JsonArray();
@@ -69,7 +76,6 @@ public class ConversationManager {
 
         long currentTick = mc.level.getGameTime();
 
-        // 1. Check Active Conversation End Conditions
         if (activeEntity != null) {
             boolean timeout = (currentTick - lastMessageTick) > 1200; 
             boolean tooFar = mc.player.distanceToSqr(activeEntity) > 2500; 
@@ -80,27 +86,22 @@ public class ConversationManager {
             }
         }
 
-        // 2. Check AI Initiation Condition
         if (activeEntity == null && (currentTick - lastInitiationTick) > 200) { 
             AABB box = mc.player.getBoundingBox().inflate(8.0D);
             
-            // CHANGED: Check if the entity is not in the map, OR if their personal cooldown (6000 ticks = 5 mins) has expired
             List<Entity> nearby = mc.level.getEntities(mc.player, box, e -> 
                 Config.isWhitelisted(e) && !Config.isBlacklisted(e) &&
                 (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 6000) &&
-                mc.player.hasLineOfSight(e) // <-- Added Line of Sight check!
+                mc.player.hasLineOfSight(e) 
             );
             
             if (!nearby.isEmpty()) {
                 Entity target = nearby.get(0);
                 
-                // Put them on cooldown whether they win or lose the coin toss
                 initiationCooldowns.put(target.getUUID(), currentTick);
                 
-                // 50% chance to initiate
                 double roll = Math.random();
                 
-                // Output the debug roll result if enabled
                 if (debugInit) {
                     mc.player.sendSystemMessage(Component.literal(
                         "§e[Init Debug] §fRolled " + String.format("%.2f", roll) + " (Needs < 0.50) for " + target.getDisplayName().getString()
@@ -109,21 +110,28 @@ public class ConversationManager {
 
                 if (roll < 0.5) {
                     lastInitiationTick = currentTick;
-                    startConversation(target, currentTick);
+                    // --- UPDATED: Pass true because the NPC initiated ---
+                    startConversation(target, currentTick, true);
                     
+                    mc.player.playSound(net.minecraft.sounds.SoundEvents.EXPERIENCE_ORB_PICKUP, 0.5F, 1.0F);
+                    for (int i = 0; i < 4; i++) {
+                        mc.level.addParticle(net.minecraft.core.particles.ParticleTypes.NOTE, 
+                            target.getX() + (Math.random() - 0.5) * 0.5, 
+                            target.getY() + target.getBbHeight() + 0.5D, 
+                            target.getZ() + (Math.random() - 0.5) * 0.5, 
+                            0.0D, 0.0D, 0.0D);
+                    }
+
                     String apiKey = Config.API_KEY.get();
                     if (apiKey != null && !apiKey.isEmpty()) {
                         
-                        // Pass true here because the NPC is initiating
                         String sysPrompt = PromptBuilder.getSystemPrompt(mc.player, target, true);
                         
                         String name = target.getPersistentData().getString("mcaichat_name");
                         if (name.isEmpty()) name = target.getDisplayName().getString();
                         
-                        // Grab the specific color string here based on the target entity
                         String colorCode = PromptBuilder.getSentimentColorCode(mc.player, target);
                         
-                        // If debug is enabled, print the full prompt to the chat AND the game console
                         if (debugInit) {
                             System.out.println("====== AI CHAT INIT DEBUG ======");
                             System.out.println("ROLL: " + roll);

@@ -64,6 +64,7 @@ public class PromptBuilder {
         - Remember that you have your own life, survival concerns, and routines. You are not just a prop waiting for the player. Do not overly protagonize the player.
         - Chat with the player like a character from a realistic RPG adventure story, not a meaningless NPC. Your dialogue should be purposeful and engaging, not hollow and flowerly.
         - Do not try to include all your knowledge in your response. Your knowledge is simply a resource you can draw from to make your character feel real and alive.
+        - Format your response in a single short paragraph, and DO NOT include roleplay actions. Only return straight dialogue without quotations marks so that your answer looks natural in a chat window.
         
         [CRITICAL OPERATION & DIALOGUE RULES]
         Review all context above, and generate your response using the following strict priority guidelines:
@@ -96,6 +97,7 @@ public class PromptBuilder {
         - Remember that you have your own life, survival concerns, and routines. You are not just a prop waiting for the player. Do not overly protagonize the player.
         - Chat with the player like a character from a realistic RPG adventure story, not a meaningless NPC. Your dialogue should be purposeful and engaging, not hollow and flowerly.
         - Do not try to include all your knowledge in your response. Your knowledge is simply a resource you can draw from to make your character feel real and alive.
+        - Format your response in a single short paragraph, and DO NOT include roleplay actions. Only return straight dialogue without quotations marks so that your answer looks natural in a chat window.
         
         [CRITICAL OPERATION & GREETING RULES]
         Review all context above, and generate your greeting using the following strict priority guidelines:

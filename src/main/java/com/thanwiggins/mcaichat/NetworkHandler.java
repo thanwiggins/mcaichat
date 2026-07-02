@@ -25,5 +25,16 @@ public class NetworkHandler {
                 SyncNPCPacket::encode,
                 SyncNPCPacket::new,
                 SyncNPCPacket::handle);
+                
+        INSTANCE.registerMessage(id++, ConversationStatePacket.class,
+                ConversationStatePacket::encode,
+                ConversationStatePacket::new,
+                ConversationStatePacket::handle);
+                
+        // --- NEW: Register the NPC Death Packet ---
+        INSTANCE.registerMessage(id++, NpcDeathPacket.class,
+                NpcDeathPacket::encode,
+                NpcDeathPacket::new,
+                NpcDeathPacket::handle);
     }
 }

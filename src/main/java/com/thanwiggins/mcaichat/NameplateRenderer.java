@@ -31,12 +31,21 @@ public class NameplateRenderer {
                     colorCode = PromptBuilder.getSentimentColorCode(player, entity);
                 }
 
-                // NEW: Permanently override the color code if they know a secret
+                // Permanently override the color code if they know a secret
                 if (data.contains("mcaichat_secret_type")) {
                     colorCode = "§b"; // Aqua/Blue color
                 }
                 
-                event.setContent(Component.literal(colorCode + name));
+                // --- UPDATED: Swap between [ ! ] and [ * ] based on who initiated ---
+                if (ConversationManager.activeEntity != null && ConversationManager.activeEntity.getUUID().equals(entity.getUUID())) {
+                    if (ConversationManager.isNpcInitiated) {
+                        event.setContent(Component.literal("§e[ ! ] " + colorCode + name + " §e[ ! ]"));
+                    } else {
+                        event.setContent(Component.literal("§e[ * ] " + colorCode + name + " §e[ * ]"));
+                    }
+                } else {
+                    event.setContent(Component.literal(colorCode + name));
+                }
                 
                 // Seamlessly register them to their social circle if they have a home!
                 if (data.contains("mcaichat_home_id")) {

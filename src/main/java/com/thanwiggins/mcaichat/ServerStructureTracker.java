@@ -6,11 +6,14 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity; // NEW IMPORT
+import net.minecraft.world.entity.player.Player; // NEW IMPORT
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent; // NEW IMPORT
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.network.PacketDistributor;
@@ -68,19 +71,16 @@ public class ServerStructureTracker {
 
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
 
-                // --- NEW: Sync nearby NPCs to the client ---
                 net.minecraft.world.phys.AABB searchBox = player.getBoundingBox().inflate(16.0D); 
                 java.util.List<net.minecraft.world.entity.Entity> nearbyNPCs = serverLevel.getEntities(player, searchBox, e -> Config.isWhitelisted(e));
 
                 for (net.minecraft.world.entity.Entity npc : nearbyNPCs) {
                     CompoundTag data = npc.getPersistentData();
                     
-                    // Trigger the World Knowledge scan if it hasn't happened yet!
                     if (!data.contains("mcaichat_home_id")) {
                         IdentityHandler.generateWorldKnowledge(npc, serverLevel);
                     }
                     
-                    // Build the trades string on the SERVER where it's accessible
                     String tradingInfo = "";
                     if (npc instanceof net.minecraft.world.item.trading.Merchant merchant) {
                         if (!merchant.getOffers().isEmpty()) {
@@ -108,6 +108,33 @@ public class ServerStructureTracker {
                     NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new SyncNPCPacket(npc.getId(), data, tradingInfo));
                 }
             }
+        }
+    }
+
+    // --- NEW: Accurate Server-Side Death Tracking ---
+    @SubscribeEvent
+    public static void onEntityDeath(LivingDeathEvent event) {
+        LivingEntity entity = event.getEntity();
+        
+        // Ensure this is running strictly on the server where DamageSource is 100% accurate
+        if (!entity.level().isClientSide() && Config.isWhitelisted(entity)) {
+            net.minecraft.world.damagesource.DamageSource source = event.getSource();
+            net.minecraft.world.entity.Entity attacker = source.getEntity();
+            String cause;
+
+            if (attacker != null) {
+                // Check if the attacker was the local/server player
+                if (attacker instanceof Player) {
+                    cause = "Slain by the player";
+                } else {
+                    cause = "Slain by a " + attacker.getDisplayName().getString();
+                }
+            } else {
+                cause = source.getLocalizedDeathMessage(entity).getString();
+            }
+
+            // Broadcast the actual cause of death back to all clients
+            NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new NpcDeathPacket(entity.getUUID(), cause));
         }
     }
 }

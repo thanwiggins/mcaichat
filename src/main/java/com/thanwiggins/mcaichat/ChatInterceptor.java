@@ -52,7 +52,8 @@ public class ChatInterceptor {
             ConversationManager.endConversation(currentTick);
         }
         if (ConversationManager.activeEntity == null) {
-            ConversationManager.startConversation(targetEntity, currentTick);
+            // --- UPDATED: Pass false because the player initiated ---
+            ConversationManager.startConversation(targetEntity, currentTick, false);
         }
 
         String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
@@ -60,12 +61,10 @@ public class ChatInterceptor {
         
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
         
-        // Pass false here because the player is initiating
         String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity, false);
         lastSystemPrompt = systemPrompt;
         lastUserMessage = message;
 
-        // Obtain the proper chat color for this entity
         String colorCode = PromptBuilder.getSentimentColorCode(player, targetEntity);
 
         ConversationManager.addMessage("user", message, currentTick);
@@ -83,7 +82,7 @@ public class ChatInterceptor {
 
         AABB searchBox = player.getBoundingBox().inflate(8.0D);
         List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, e -> 
-            Config.isWhitelisted(e) && player.hasLineOfSight(e) // <-- Added Line of Sight check!
+            Config.isWhitelisted(e) && player.hasLineOfSight(e)
         );
 
         Entity closest = null;

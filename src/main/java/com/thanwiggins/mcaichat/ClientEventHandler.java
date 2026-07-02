@@ -1,9 +1,7 @@
 package com.thanwiggins.mcaichat;
 
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
-import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -24,15 +22,5 @@ public class ClientEventHandler {
         ClientLoreManager.saveWorldLore();
         ClientMemoryManager.saveWorldMemory();
         ClientSocialManager.saveWorldSocial();
-    }
-
-    @SubscribeEvent
-    public static void onEntityDeath(LivingDeathEvent event) {
-        LivingEntity entity = event.getEntity();
-        // If the entity dies and it's an AI character, mark them deceased with the cause
-        if (entity.level().isClientSide() && Config.isWhitelisted(entity)) {
-            String cause = event.getSource().getLocalizedDeathMessage(entity).getString();
-            ClientSocialManager.markDeceased(entity.getUUID(), cause);
-        }
     }
 }
