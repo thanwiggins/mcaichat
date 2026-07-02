@@ -20,29 +20,24 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
-import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
 
-import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Method;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Assembles the full Gemini system prompt for a conversation out of five context sections
-// (ambient details, world knowledge, personal background, social circle, exigent circumstances),
-// filled into a user-editable template file. There are two templates - one for a player-initiated
-// chat, one for an NPC-initiated greeting - since the tone and framing differ (responding vs.
-// speaking up first) even though the underlying context-gathering is identical.
+// Assembles the full Gemini system prompt for a conversation out of six context sections
+// (ambient details, world knowledge, personal background, social circle, exigent circumstances,
+// special instructions), filled into one of two fixed internal templates - one for a
+// player-initiated chat, one for an NPC-initiated greeting - since the tone and framing differ
+// (responding vs. speaking up first) even though the underlying context-gathering is identical.
+// These templates are intentionally not user-editable; per-entity customization instead goes
+// through EntityInstructionManager (see the Creature config screen).
 public class PromptBuilder {
-    private static final File PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_prompt.txt").toFile();
-    private static final File INIT_PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_init_prompt.txt").toFile();
-
-    private static final String DEFAULT_PROMPT = """
+    private static final String PROMPT_TEMPLATE = """
         You are a character in Minecraft conversing with a player in real-time.
         The following raw context sections define your current environment, your history, your background, and immediate events happening around you.
         
@@ -54,10 +49,13 @@ public class PromptBuilder {
         
         === Personal Background ===
         {PERSONAL_BACKGROUND}
-        
+
+        === Special Instructions ===
+        {SPECIAL_INSTRUCTIONS}
+
         === Social Circle ===
         {SOCIAL_CIRCLE}
-        
+
         === Exigent Circumstances ===
         {EXIGENT_CIRCUMSTANCES}
 
@@ -66,16 +64,17 @@ public class PromptBuilder {
         - Chat with the player like a character from a realistic RPG adventure story, not a meaningless NPC. Your dialogue should be purposeful and engaging, not hollow and flowerly.
         - Do not try to include all your knowledge in your response. Your knowledge is simply a resource you can draw from to make your character feel real and alive.
         - Format your response in a single short paragraph, and DO NOT include roleplay actions. Only return straight dialogue without quotations marks so that your answer looks natural in a chat window.
-        
+        - Pay attention to the message the user sends you to determine the type of scene you are acting in. Do NOT be overly verbiose or quaint. Do NOT try to act as the main character. Determine the right tone for the conversation pay close attention to what the player is telling you.
+
         [CRITICAL OPERATION & DIALOGUE RULES]
         Review all context above, and generate your response using the following strict priority guidelines:
-        1. CORE DRIVERS (HIGHEST PRIORITY): Your response must be driven entirely by your designated Personality and your current Sentiment/Faction Standing towards the player. This defines your active tone, vocabulary, and mood. Keep responses concise and natural.
+        1. CORE DRIVERS (HIGHEST PRIORITY): Your response must be driven entirely by your designated Personality, your current Sentiment/Faction Standing towards the player, and any Special Instructions. This defines your active tone, vocabulary, and mood. Keep responses concise and natural.
         2. SITUATIONAL REACTIVITY (MEDIUM PRIORITY): As the conversation progresses, weave in relevant facts from Exigent Circumstances, World Knowledge, or past Memories organically based on your Entity Type and Capabilities.
            - ANTI-REPETITION CONSTRAINT: Never act like a mechanical game notification state tracker. Avoid repeating static updates or useless environmental facts. React naturally and act as a character in a fantasy RPG story, filtering it through your character's personality and background, rather than sounding like a cheap robot. Acknowledge situational changes with realistic variance, then shift focus forward.
         3. BACKGROUND SUBTEXT (LOWEST PRIORITY): Treat Ambient Details, Trading Stock details, and your Social Circle roster as passive background that can be referred to when it comes up in a conversation. Do not list items like a catalog or randomly name-drop roommates unless explicitly asked or contextually critical.
         """;
 
-    private static final String DEFAULT_INIT_PROMPT = """
+    private static final String INIT_PROMPT_TEMPLATE = """
         You are a character in Minecraft. You are initiating a conversation with a player who just walked nearby.
         The following raw context sections define your current environment, your history, your background, and immediate events happening around you.
         
@@ -87,10 +86,13 @@ public class PromptBuilder {
         
         === Personal Background ===
         {PERSONAL_BACKGROUND}
-        
+
+        === Special Instructions ===
+        {SPECIAL_INSTRUCTIONS}
+
         === Social Circle ===
         {SOCIAL_CIRCLE}
-        
+
         === Exigent Circumstances ===
         {EXIGENT_CIRCUMSTANCES}
 
@@ -99,24 +101,26 @@ public class PromptBuilder {
         - Chat with the player like a character from a realistic RPG adventure story, not a meaningless NPC. Your dialogue should be purposeful and engaging, not hollow and flowerly.
         - Do not try to include all your knowledge in your response. Your knowledge is simply a resource you can draw from to make your character feel real and alive.
         - Format your response in a single short paragraph, and DO NOT include roleplay actions. Only return straight dialogue without quotations marks so that your answer looks natural in a chat window.
-        
+        - Pay attention to the message the user sends you to determine the type of scene you are acting in. Do NOT be overly verbiose or quaint. Do NOT try to act as the main character. Determine the right tone for the conversation pay close attention to what the player is telling you. 
+
         [CRITICAL OPERATION & GREETING RULES]
         Review all context above, and generate your greeting using the following strict priority guidelines:
-        1. CORE DRIVERS (HIGHEST PRIORITY): Your initiation dialogue must be driven by your designated Personality and your current Sentiment/Faction Standing. This dictates your tone, greeting style, and character voice. Keep it concise.
+        1. CORE DRIVERS (HIGHEST PRIORITY): Your initiation dialogue must be driven by your designated Personality, your current Sentiment/Faction Standing, and any Special Instructions. This dictates your tone, greeting style, and character voice. Keep it concise.
         2. SITUATIONAL REACTIVITY (MEDIUM PRIORITY): Look at Exigent Circumstances or World Knowledge to determine *why* you are calling out to the player.
            - ANTI-REPETITION CONSTRAINT: Never act like a mechanical game status monitor. Avoid repeating useless facts or stale text. Do not repeatedly yell mechanical warnings. React naturally and act as a character in a fantasy RPG story, filtering it through your character's personality and background, rather than sounding like a cheap robot.
         3. BACKGROUND SUBTEXT (LOWEST PRIORITY): Treat Ambient Details, your Name, your specific Trading Stock catalog, and your Social Circle roster as passive subtext. Do not introduce your trading options or roommate details in your greeting unless it is explicitly context-critical to a high-priority situational trigger.
         """;
 
     public static String getSystemPrompt(Player player, Entity target, boolean isInitiating) {
-        String basePrompt = isInitiating ? loadInitPromptFile() : loadPromptFile();
-        
+        String basePrompt = isInitiating ? INIT_PROMPT_TEMPLATE : PROMPT_TEMPLATE;
+
         Level level = player.level();
         BlockPos pos = target.blockPosition();
 
         String ambient = buildAmbientDetails(level, pos);
         String world = buildWorldKnowledge(pos, target);
         String background = buildPersonalBackground(player, target);
+        String special = buildSpecialInstructions(target);
         String social = buildSocialCircle(target);
         String exigent = buildExigentCircumstances(level, player, target);
 
@@ -124,34 +128,16 @@ public class PromptBuilder {
                 .replace("{AMBIENT_DETAILS}", ambient)
                 .replace("{WORLD_KNOWLEDGE}", world)
                 .replace("{PERSONAL_BACKGROUND}", background)
+                .replace("{SPECIAL_INSTRUCTIONS}", special.isEmpty() ? "None." : special)
                 .replace("{SOCIAL_CIRCLE}", social)
                 .replace("{EXIGENT_CIRCUMSTANCES}", exigent.isEmpty() ? "None." : exigent);
     }
 
-    // Writes the default template to disk on first use so players can find and edit it, then
-    // always reads back from disk afterward - letting edits take effect without a restart.
-    private static String loadPromptFile() {
-        try {
-            if (!PROMPT_FILE.exists()) {
-                Files.writeString(PROMPT_FILE.toPath(), DEFAULT_PROMPT);
-            }
-            return Files.readString(PROMPT_FILE.toPath());
-        } catch (IOException e) {
-            e.printStackTrace();
-            return DEFAULT_PROMPT;
-        }
-    }
-
-    private static String loadInitPromptFile() {
-        try {
-            if (!INIT_PROMPT_FILE.exists()) {
-                Files.writeString(INIT_PROMPT_FILE.toPath(), DEFAULT_INIT_PROMPT);
-            }
-            return Files.readString(INIT_PROMPT_FILE.toPath());
-        } catch (IOException e) {
-            e.printStackTrace();
-            return DEFAULT_INIT_PROMPT;
-        }
+    // Player-authored, per-entity-type flavor text set via the Creature config screen (e.g.
+    // "You secretly work for the Thieves' Guild"), stored globally by EntityInstructionManager.
+    private static String buildSpecialInstructions(Entity target) {
+        String registryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
+        return EntityInstructionManager.get(registryName);
     }
 
     // Passive scene-setting: biome, time of day, weather, season (if Serene Seasons is installed),
@@ -207,7 +193,9 @@ public class PromptBuilder {
 
         // 1. Home Knowledge
         String homeId = data.getString("mcaichat_home_id");
-        if (!homeId.isEmpty()) {
+        // IdentityHandler always writes "none" (never leaves this truly empty) when nothing
+        // claimed a home, so both cases have to be checked - isEmpty() alone never catches it.
+        if (!homeId.isEmpty() && !homeId.equals("none")) {
             String homeType = formatName(data.getString("mcaichat_home_type"));
             ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
             String homeName = (homeLore != null) ? homeLore.name : homeType;
@@ -216,11 +204,11 @@ public class PromptBuilder {
             if (homeId.equals(ClientLoreManager.currentStructureId)) {
                 homeName += " (here)";
             }
-            
+
             String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
             knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
         } else {
-            knowledge += "Home: Nomad / No specific home\n";
+            knowledge += "Home: None (Nomad)\n";
         }
         
         // 2. Surrounding Civilizations
@@ -249,32 +237,27 @@ public class PromptBuilder {
                     }
                     
                     String direction = getDirection(pos.getX(), pos.getZ(), civX, civZ);
-                    
-                    civsBuilder.append("- ").append(civName).append(" located to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
+                    double dist = Math.sqrt(Math.pow(pos.getX() - civX, 2) + Math.pow(pos.getZ() - civZ, 2));
+                    String relativeDistance = getRelativeDistance(dist);
+
+                    civsBuilder.append("- ").append(civName).append(" located ").append(relativeDistance).append(" to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
                 }
             }
-            
+
             if (civsBuilder.length() > 0) {
-                knowledge += "Nearby Civilizations:\n" + civsBuilder.toString();
+                knowledge += "Nearby Locations:\n" + civsBuilder.toString();
             }
         }
-        
+
         // 3. Secret Adventure Structure Knowledge
         if (data.contains("mcaichat_secret_type")) {
             String secretType = formatName(data.getString("mcaichat_secret_type"));
             int secretX = data.getInt("mcaichat_secret_x");
             int secretZ = data.getInt("mcaichat_secret_z");
-            
+
             double dist = Math.sqrt(Math.pow(pos.getX() - secretX, 2) + Math.pow(pos.getZ() - secretZ, 2));
             String direction = getDirection(pos.getX(), pos.getZ(), secretX, secretZ);
-
-            // Described in vague relative terms rather than exact coordinates - the NPC "knows of"
-            // the location, it doesn't have a map with a marker on it
-            String relativeDistance;
-            if (dist < 50) relativeDistance = "very close";
-            else if (dist < 150) relativeDistance = "nearby";
-            else if (dist < 300) relativeDistance = "a moderate distance";
-            else relativeDistance = "quite far";
+            String relativeDistance = getRelativeDistance(dist);
 
             knowledge += "Secret: You know the location of a hidden " + secretType + " that is " + relativeDistance + " to the " + direction + ".";
         }
@@ -333,7 +316,10 @@ public class PromptBuilder {
         
         String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
         String entityType = formatName(ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).getPath());
-        
+        if (target instanceof LivingEntity livingTarget && livingTarget.isBaby()) {
+            entityType += " (Baby)";
+        }
+
         boolean isMonster = target instanceof Monster;
         boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
         boolean isMerchant = target instanceof Merchant;
@@ -468,7 +454,7 @@ public class PromptBuilder {
             exigent.append("A dangerous fire is burning nearby! ");
         }
         
-        AABB dangerBox = target.getBoundingBox().inflate(24.0D);
+        AABB dangerBox = target.getBoundingBox().inflate(16.0D);
 
         // Every non-blacklisted, non-chattable living entity nearby - hostile, passive, or
         // ambient alike - gets surfaced below, just sorted into separate buckets by type.
@@ -538,14 +524,28 @@ public class PromptBuilder {
             if (currentHealth <= (maxHealth * 0.3f)) { // below 30% of max health
                 exigent.append("You are severely injured and near death. ");
             }
-            
-            for (MobEffectInstance effect : livingTarget.getActiveEffects()) {
-                String effectName = effect.getEffect().getDisplayName().getString();
-                exigent.append("You are currently suffering from the '").append(effectName).append("' status effect. ");
+
+            // Read from the server-synced summary (see SyncNPCPacket) rather than
+            // livingTarget.getActiveEffects() directly - unlike health/food, potion effects aren't
+            // part of an entity's always-synced metadata, and don't reliably reach the client here.
+            String effectsInfo = target.getPersistentData().getString("mcaichat_effects");
+            if (!effectsInfo.isEmpty()) {
+                for (String effectName : effectsInfo.split(",")) {
+                    exigent.append("You currently have a '").append(effectName).append("' status effect. ");
+                }
             }
         }
 
         return exigent.toString().trim();
+    }
+
+    // Describes a block distance in vague relative terms rather than exact numbers - NPCs "know
+    // of" locations, they don't have a map with a marker on it.
+    private static String getRelativeDistance(double dist) {
+        if (dist < 50) return "very close";
+        if (dist < 150) return "nearby";
+        if (dist < 300) return "a moderate distance";
+        return "quite far";
     }
 
     // Reduces a relative offset to one of 8 compass directions - biased toward the cardinal

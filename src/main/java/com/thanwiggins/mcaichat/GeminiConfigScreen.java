@@ -49,9 +49,18 @@ public class GeminiConfigScreen extends Screen {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics);
         guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
-        
-        guiGraphics.drawString(this.font, Component.literal("Paste your Gemini API Key:"), this.width / 2 - 100, this.height / 2 - 55, 0xA0A0A0);
-        
+
+        // Anchored above the "Paste your Gemini API Key" label (not the title) so it never
+        // collides with the label regardless of window height.
+        int labelY = this.height / 2 - 55;
+        int warnY = labelY - 33;
+        int warnColor = 0xFFAA00;
+        guiGraphics.drawCenteredString(this.font, Component.literal("This mod cannot guarantee your API key or messages are kept secure."), this.width / 2, warnY, warnColor);
+        guiGraphics.drawCenteredString(this.font, Component.literal("Do not share sensitive or personal information in chat."), this.width / 2, warnY + 10, warnColor);
+        guiGraphics.drawCenteredString(this.font, Component.literal("Review your API key's usage terms, quotas, and limits."), this.width / 2, warnY + 20, warnColor);
+
+        guiGraphics.drawString(this.font, Component.literal("Paste your Gemini API Key:"), this.width / 2 - 100, labelY, 0xA0A0A0);
+
         super.render(guiGraphics, mouseX, mouseY, partialTick);
     }
 }

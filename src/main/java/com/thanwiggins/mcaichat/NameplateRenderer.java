@@ -36,9 +36,10 @@ public class NameplateRenderer {
                     colorCode = "§b"; // Aqua/Blue color
                 }
                 
-                // [ ! ] marks an NPC that spoke up on its own; [ * ] marks one the player is chatting with
+                // [ ! ] marks an NPC's unprompted greeting; it becomes [ * ] once the NPC has
+                // actually replied to the player (its 2nd reply onward), same as a normal chat.
                 if (ConversationManager.activeEntity != null && ConversationManager.activeEntity.getUUID().equals(entity.getUUID())) {
-                    if (ConversationManager.isNpcInitiated) {
+                    if (ConversationManager.isNpcInitiated && ConversationManager.modelReplyCount <= 1) {
                         event.setContent(Component.literal("§e[ ! ] " + colorCode + name + " §e[ ! ]"));
                     } else {
                         event.setContent(Component.literal("§e[ * ] " + colorCode + name + " §e[ * ]"));

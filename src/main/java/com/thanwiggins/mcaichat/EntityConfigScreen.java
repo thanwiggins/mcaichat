@@ -15,17 +15,21 @@ import net.minecraft.world.entity.monster.Enemy;
 import java.util.*;
 import java.util.stream.Collectors;
 
-// Lets the player toggle chat-whitelisting per entity type and override how it's categorized
-// (monster/creature/wildlife) for the "nearby danger" section of the AI prompt. Lists every
-// registered entity type in the game, searchable, so this covers modded entities too.
+// Lets the player toggle chat-whitelisting per entity type, override how it's categorized
+// (monster/creature/wildlife) for the "nearby danger" section of the AI prompt, mark a type as
+// always-wandering (see IdentityHandler), and set free-text special instructions baked into that
+// type's system prompt. Lists every registered entity type in the game, searchable, so this
+// covers modded entities too. Each row spans two lines - the second only appears for entities
+// that can chat, since wandering/instructions are meaningless for anything else.
 public class EntityConfigScreen extends Screen {
     private final Screen previous;
     private EditBox searchBox;
     private int currentPage = 0;
-    private final int itemsPerPage = 6;
+    private final int itemsPerPage = 4;
+    private final int rowHeight = 46;
     private List<String> allEntities;
     private List<String> filteredEntities;
-    
+
     public EntityConfigScreen(Screen previous) {
         super(Component.literal("Configure Creatures & Whitelist"));
         this.previous = previous;
@@ -48,12 +52,12 @@ public class EntityConfigScreen extends Screen {
                 .filter(e -> e.toLowerCase().contains(text.toLowerCase()))
                 .collect(Collectors.toList());
             this.currentPage = 0;
-            this.init(); 
+            this.init();
         });
         this.addRenderableWidget(this.searchBox);
 
         int maxPages = Math.max(1, (int) Math.ceil(filteredEntities.size() / (double) itemsPerPage));
-        
+
         this.addRenderableWidget(Button.builder(Component.literal("<"), b -> {
             if (currentPage > 0) { currentPage--; this.init(); }
         }).bounds(centerX - 180, 15, 20, 20).build());
@@ -67,13 +71,14 @@ public class EntityConfigScreen extends Screen {
 
         for (int i = startIdx; i < endIdx; i++) {
             String entityId = filteredEntities.get(i);
-            int yPos = yStart + ((i - startIdx) * 25);
-            
+            int yPos = yStart + ((i - startIdx) * rowHeight);
+
+            // --- Line 1: chat toggle + category ---
             boolean isWhitelisted = Config.isInList(Config.WHITELIST_ENTITIES, entityId);
             Button whitelistBtn = Button.builder(Component.literal(isWhitelisted ? "Chat: ON" : "Chat: OFF"), b -> {
                 Config.setCategory(Config.WHITELIST_ENTITIES, entityId, !isWhitelisted);
                 this.init();
-            }).bounds(centerX - 25, yPos, 70, 20).build();
+            }).bounds(centerX - 40, yPos, 70, 20).build();
             this.addRenderableWidget(whitelistBtn);
 
             String currentCat = "";
@@ -90,9 +95,32 @@ public class EntityConfigScreen extends Screen {
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleEntityCategory(entityId);
-                this.init(); 
-            }).bounds(centerX + 50, yPos, 130, 20).build();
+                this.init();
+            }).bounds(centerX + 35, yPos, 115, 20).build();
             this.addRenderableWidget(cycleBtn);
+
+            // --- Line 2: wanderer toggle + special instructions - only relevant for chattable
+            // entities, since IdentityHandler only ever generates world-knowledge (home/wandering)
+            // and a system prompt (special instructions) for whitelisted entities in the first place.
+            if (isWhitelisted) {
+                int line2Y = yPos + 23;
+
+                boolean isWanderer = Config.isInList(Config.WANDERER_ENTITIES, entityId);
+                Button wandererBtn = Button.builder(Component.literal(isWanderer ? "-Wander" : "+Wander"), b -> {
+                    Config.setCategory(Config.WANDERER_ENTITIES, entityId, !isWanderer);
+                    this.init();
+                }).bounds(centerX - 150, line2Y, 60, 20).build();
+                this.addRenderableWidget(wandererBtn);
+
+                EditBox instructionsBox = new EditBox(this.font, centerX - 85, line2Y, 235, 20, Component.literal("Special Instructions"));
+                instructionsBox.setMaxLength(300);
+                instructionsBox.setHint(Component.literal("Special instructions (optional)"));
+                instructionsBox.setValue(EntityInstructionManager.get(entityId));
+                // Saved on every keystroke, no re-init - this field has no other on-screen state
+                // that needs to stay in sync, so rebuilding the whole screen would only cost focus.
+                instructionsBox.setResponder(text -> EntityInstructionManager.set(entityId, text));
+                this.addRenderableWidget(instructionsBox);
+            }
         }
 
         this.addRenderableWidget(Button.builder(Component.literal("Back"), b -> {
@@ -136,12 +164,12 @@ public class EntityConfigScreen extends Screen {
 
         for (int i = startIdx; i < endIdx; i++) {
             String entityId = filteredEntities.get(i);
-            int yPos = yStart + ((i - startIdx) * 25) + 6;
-            
-            int maxWidth = 145;
-            int textX = centerX - 180;
+            int yPos = yStart + ((i - startIdx) * rowHeight) + 6;
+
+            int maxWidth = 105;
+            int textX = centerX - 150;
             int textWidth = this.font.width(entityId);
-            
+
             if (textWidth > maxWidth) {
                 // Long entity IDs get a marquee scroll: pause at the start, scroll left to
                 // reveal the end, then wrap back to the start on a loop.

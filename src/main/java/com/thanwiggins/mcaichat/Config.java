@@ -12,7 +12,9 @@ public class Config {
     public static final ForgeConfigSpec.ConfigValue<String> API_KEY;
     public static final ForgeConfigSpec.ConfigValue<String> WHITELIST_ENTITIES;
     public static final ForgeConfigSpec.ConfigValue<String> BLACKLIST_ENTITIES;
-    
+    public static final ForgeConfigSpec.ConfigValue<String> WANDERER_ENTITIES;
+
+
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_MONSTERS;
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_CREATURES;
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_WILDLIFE;
@@ -34,7 +36,10 @@ public class Config {
                          
         BLACKLIST_ENTITIES = BUILDER.comment("Comma-separated list of entity IDs that the AI should completely ignore.")
                          .define("blacklistEntities", "minecraft:armor_stand");
-                         
+
+        WANDERER_ENTITIES = BUILDER.comment("Entities that are always treated as wanderers and never assigned a home structure, even if standing inside one - useful for entities like Wandering Traders that can spawn within a structure's bounds without actually being native to it.")
+                         .define("wandererEntities", "minecraft:wandering_trader");
+
         CUSTOM_MONSTERS = BUILDER.comment("Entities forced to be classified as monsters").define("customMonsters", "");
         CUSTOM_CREATURES = BUILDER.comment("Entities forced to be classified as creatures").define("customCreatures", "");
         CUSTOM_WILDLIFE = BUILDER.comment("Entities forced to be classified as ambient wildlife").define("customWildlife", "");
@@ -73,8 +78,14 @@ public class Config {
     }
 
     public static boolean isBlacklisted(net.minecraft.world.entity.Entity entity) {
-        if (entity == null) return true; 
+        if (entity == null) return true;
         String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
         return isInList(BLACKLIST_ENTITIES, registryName);
+    }
+
+    public static boolean isWanderer(net.minecraft.world.entity.Entity entity) {
+        if (entity == null) return false;
+        String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
+        return isInList(WANDERER_ENTITIES, registryName);
     }
 }

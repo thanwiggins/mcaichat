@@ -120,7 +120,19 @@ public class ServerStructureTracker {
                         }
                     }
 
-                    NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new SyncNPCPacket(npc.getId(), data, tradingInfo));
+                    // Active potion effects don't reliably reach the client via vanilla's own entity
+                    // sync (unlike health/food), so push them down explicitly, same as trades above.
+                    String effectsInfo = "";
+                    if (npc instanceof net.minecraft.world.entity.LivingEntity livingNpc) {
+                        StringBuilder effects = new StringBuilder();
+                        for (net.minecraft.world.effect.MobEffectInstance effect : livingNpc.getActiveEffects()) {
+                            if (effects.length() > 0) effects.append(",");
+                            effects.append(effect.getEffect().getDisplayName().getString());
+                        }
+                        effectsInfo = effects.toString();
+                    }
+
+                    NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new SyncNPCPacket(npc.getId(), data, tradingInfo, effectsInfo));
                 }
             }
         }

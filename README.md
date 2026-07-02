@@ -54,14 +54,15 @@ instead of global chat.
 ## Configuration
 
 From **Mods > MC-AI Chat > Config**:
-- **Creature Config** - whitelist/blacklist entities for chat, and categorize them as monsters,
-  creatures, or wildlife for the "nearby danger" context Gemini receives.
+- **Creature Config** - whitelist/blacklist entities for chat, categorize them as monsters,
+  creatures, or wildlife for the "nearby danger" context Gemini receives, mark a type as always-
+  wandering (never assigned a home structure), and set free-text special instructions baked into
+  that entity type's system prompt (e.g. "you secretly work for the Thieves' Guild").
 - **Structure Config** - categorize discovered (or known) structures as civilizations, nomad camps,
   adventure locations, or ignore them entirely.
 
-The system prompts themselves are plain text files you can edit directly, generated on first run:
-- `config/mcaichat_prompt.txt` - used when the player speaks first.
-- `config/mcaichat_init_prompt.txt` - used when an NPC speaks first.
+The system prompt templates themselves are fixed internally (not user-editable files) - use the
+Creature config's special instructions field for per-entity-type customization instead.
 
 ## Building from source
 

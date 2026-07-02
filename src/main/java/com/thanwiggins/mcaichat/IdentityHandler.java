@@ -71,6 +71,9 @@ public class IdentityHandler {
         String homeId = "";
         double closestCivDist = 50 * 50; // blocks, squared - being within 50 blocks claims a structure as "home"
 
+        // Forced wanderers (e.g. Wandering Traders) can still see nearby civilizations for context,
+        // they just never claim one as "home" - even if they happen to be standing inside one.
+        boolean isWanderer = Config.isWanderer(entity);
 
         boolean rollSecret = random.nextInt(100) < 5; // 5% of NPCs are given a "secret" location to reveal in conversation
 
@@ -122,8 +125,8 @@ public class IdentityHandler {
                             
                             if (isCiv || isNomad) {
                                 String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                
-                                if (actualDist <= closestCivDist) {
+
+                                if (!isWanderer && actualDist <= closestCivDist) {
                                     closestCivDist = actualDist;
                                     homeId = structId;
                                     data.putString("mcaichat_home_id", homeId);
@@ -150,7 +153,7 @@ public class IdentityHandler {
         if (roost != null && !Config.isInList(Config.IGNORED_STRUCTURES, roost.type())) {
             String structType = roost.type().substring(roost.type().indexOf(':') + 1);
 
-            if (roost.distSqr() <= closestCivDist) {
+            if (!isWanderer && roost.distSqr() <= closestCivDist) {
                 closestCivDist = roost.distSqr();
                 homeId = roost.id();
                 data.putString("mcaichat_home_id", homeId);

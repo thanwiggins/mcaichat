@@ -22,6 +22,13 @@ public class GeminiClient {
     // Sends one conversation turn (the full rolling history, not just the latest message) and
     // prints the reply to chat. Used for both reactive player messages and NPC-initiated greetings.
     public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, String colorCode) {
+        sendMessage(apiKey, systemPrompt, history, entityName, colorCode, null);
+    }
+
+    // Same as above, but runs onReplyReceived right as a successful reply is about to be shown -
+    // used to time the NPC-initiated "ding" cue to when the greeting actually arrives, rather
+    // than when the request was fired (which could fail, or take a couple seconds).
+    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, String colorCode, Runnable onReplyReceived) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
@@ -50,6 +57,8 @@ public class GeminiClient {
                     if (Minecraft.getInstance().player == null) return;
 
                     if (response.statusCode() == 200) {
+                        if (onReplyReceived != null) onReplyReceived.run();
+
                         JsonObject jsonResponse = JsonParser.parseString(response.body()).getAsJsonObject();
                         String reply = jsonResponse.getAsJsonArray("candidates")
                                 .get(0).getAsJsonObject()
@@ -78,9 +87,9 @@ public class GeminiClient {
 
     // Seeds the conversation with a synthetic "say hello" instruction so the NPC has something
     // to respond to, then sends it through the normal sendMessage path.
-    public static void initiateConversation(String apiKey, String systemPrompt, String entityName, String colorCode, long currentTick) {
+    public static void initiateConversation(String apiKey, String systemPrompt, String entityName, String colorCode, long currentTick, Runnable onReplyReceived) {
         ConversationManager.addMessage("user", "Please initiate a conversation with me naturally. Say hello!", currentTick);
-        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode);
+        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, onReplyReceived);
     }
 
     // Called once a conversation ends: asks Gemini to fold the just-finished conversation into the

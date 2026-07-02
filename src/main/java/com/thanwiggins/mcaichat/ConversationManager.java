@@ -33,6 +33,11 @@ public class ConversationManager {
     // half of the split-brain prompt logic (reactive vs. initiation) supplied the last prompt.
     public static boolean isNpcInitiated = false;
 
+    // How many "model" replies have been given in the current conversation. Used alongside
+    // isNpcInitiated so the nameplate can tell an unprompted greeting (the 1st reply) apart from
+    // an actual response to the player (the 2nd reply onward) and swap "[ ! ]" for "[ * ]".
+    public static int modelReplyCount = 0;
+
     // Per-entity cooldown so the same NPC can't re-roll initiation every tick once it's near the player.
     public static Map<UUID, Long> initiationCooldowns = new HashMap<>();
 
@@ -47,6 +52,7 @@ public class ConversationManager {
         conversationHistory = new JsonArray();
         lastMessageTick = currentTick;
         isNpcInitiated = npcInitiated;
+        modelReplyCount = 0;
 
         // Tells the server to flag this entity as "chatting", which ChattingGoal reads to make it
         // stop wandering and look at the player for the duration of the conversation.
@@ -78,6 +84,7 @@ public class ConversationManager {
         
         conversationHistory.add(content);
         lastMessageTick = currentTick;
+        if (role.equals("model")) modelReplyCount++;
     }
 
     @SubscribeEvent
@@ -90,7 +97,7 @@ public class ConversationManager {
 
         if (activeEntity != null) {
             boolean timeout = (currentTick - lastMessageTick) > 1200; // 60 seconds of silence ends the conversation
-            boolean tooFar = mc.player.distanceToSqr(activeEntity) > 576; // 24 blocks
+            boolean tooFar = mc.player.distanceToSqr(activeEntity) > 256; // 16 blocks
             boolean deadOrRemoved = !activeEntity.isAlive() || activeEntity.isRemoved();
 
             if (timeout || tooFar || deadOrRemoved) {
@@ -99,12 +106,14 @@ public class ConversationManager {
         }
 
         // Only look for a new NPC to strike up a conversation once every 10 seconds, and only when
-        // the player isn't already in one.
-        if (activeEntity == null && (currentTick - lastInitiationTick) > 200) {
+        // the player isn't already in one and isn't invisible themselves - an NPC shouldn't call
+        // out to someone it can't perceive.
+        if (activeEntity == null && !mc.player.isInvisible() && (currentTick - lastInitiationTick) > 200) {
             AABB box = mc.player.getBoundingBox().inflate(8.0D);
 
             List<Entity> nearby = mc.level.getEntities(mc.player, box, e ->
                 Config.isWhitelisted(e) && !Config.isBlacklisted(e) &&
+                !e.isInvisible() && // an invisible NPC shouldn't give away its position by speaking up
                 (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 6000) && // 5 minute per-NPC cooldown
                 mc.player.hasLineOfSight(e)
             );
@@ -127,16 +136,6 @@ public class ConversationManager {
                 if (roll < 0.5) {
                     lastInitiationTick = currentTick;
                     startConversation(target, currentTick, true); // true: the NPC initiated
-
-                    // Sound + note particles cue the player that this NPC is speaking up on its own
-                    mc.player.playSound(net.minecraft.sounds.SoundEvents.EXPERIENCE_ORB_PICKUP, 0.5F, 1.0F);
-                    for (int i = 0; i < 4; i++) {
-                        mc.level.addParticle(net.minecraft.core.particles.ParticleTypes.NOTE, 
-                            target.getX() + (Math.random() - 0.5) * 0.5, 
-                            target.getY() + target.getBbHeight() + 0.5D, 
-                            target.getZ() + (Math.random() - 0.5) * 0.5, 
-                            0.0D, 0.0D, 0.0D);
-                    }
 
                     String apiKey = Config.API_KEY.get();
                     if (apiKey != null && !apiKey.isEmpty()) {
@@ -162,7 +161,21 @@ public class ConversationManager {
                             mc.player.sendSystemMessage(Component.literal("§7" + sysPrompt));
                         }
 
-                        GeminiClient.initiateConversation(apiKey, sysPrompt, name, colorCode, currentTick);
+                        // Sound + note particles cue the player right as the NPC's greeting actually
+                        // arrives, rather than the moment the request goes out.
+                        GeminiClient.initiateConversation(apiKey, sysPrompt, name, colorCode, currentTick, () -> {
+                            Minecraft client = Minecraft.getInstance();
+                            if (client.player == null || client.level == null || !target.isAlive()) return;
+
+                            client.player.playSound(net.minecraft.sounds.SoundEvents.EXPERIENCE_ORB_PICKUP, 0.5F, 1.0F);
+                            for (int i = 0; i < 4; i++) {
+                                client.level.addParticle(net.minecraft.core.particles.ParticleTypes.NOTE,
+                                    target.getX() + (Math.random() - 0.5) * 0.5,
+                                    target.getY() + target.getBbHeight() + 0.5D,
+                                    target.getZ() + (Math.random() - 0.5) * 0.5,
+                                    0.0D, 0.0D, 0.0D);
+                            }
+                        });
                     }
                 }
             }
