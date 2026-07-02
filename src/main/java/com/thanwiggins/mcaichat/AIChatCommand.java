@@ -1,5 +1,6 @@
 package com.thanwiggins.mcaichat;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
@@ -169,6 +170,56 @@ public class AIChatCommand {
                         context.getSource().sendSystemMessage(Component.literal(
                             "§eAI Chat Init Debugging is now: " + (ConversationManager.debugInit ? "§aON" : "§cOFF")
                         ));
+                        return 1;
+                    })
+                )
+
+                // --- CHEST SCANNER DEBUG COMMAND ---
+                .then(Commands.literal("scanchests")
+                    .executes(context -> {
+                        Minecraft mc = Minecraft.getInstance();
+                        if (mc.player == null || mc.level == null) return 0;
+                        
+                        net.minecraft.core.BlockPos playerPos = mc.player.blockPosition();
+                        int radius = 16;
+                        int found = 0;
+                        
+                        mc.player.sendSystemMessage(Component.literal("§e--- Scanning 16-Block Radius for Chests ---"));
+                        
+                        for (int x = -radius; x <= radius; x++) {
+                            for (int y = -radius; y <= radius; y++) {
+                                for (int z = -radius; z <= radius; z++) {
+                                    net.minecraft.core.BlockPos pos = playerPos.offset(x, y, z);
+                                    net.minecraft.world.level.block.entity.BlockEntity be = mc.level.getBlockEntity(pos);
+                                    
+                                    if (be != null) {
+                                        net.minecraft.nbt.CompoundTag tag = be.saveWithFullMetadata();
+                                        
+                                        // If it's a container, let's look inside
+                                        if (be instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity) {
+                                            if (tag.contains("LootTable", 8)) {
+                                                String loot = tag.getString("LootTable");
+                                                mc.player.sendSystemMessage(Component.literal("§a[VALID LOOT TABLE] §f" + loot + " §7at " + pos.toShortString()));
+                                                found++;
+                                            } else {
+                                                mc.player.sendSystemMessage(Component.literal("§c[NO LOOT TABLE] §7Container found at " + pos.toShortString() + " but it has no LootTable tag."));
+                                                mc.player.sendSystemMessage(Component.literal("§8Tag Data: " + tag.toString()));
+                                            }
+                                        } else {
+                                            // Check if it's a custom Ice and Fire block entity
+                                            String entityType = net.minecraftforge.registries.ForgeRegistries.BLOCK_ENTITY_TYPES.getKey(be.getType()).toString();
+                                            if (entityType.contains("iceandfire")) {
+                                                mc.player.sendSystemMessage(Component.literal("§b[CUSTOM IAF ENTITY] §f" + entityType + " §7at " + pos.toShortString()));
+                                                mc.player.sendSystemMessage(Component.literal("§8Tag Data: " + tag.toString()));
+                                                found++;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        mc.player.sendSystemMessage(Component.literal("§e--- Scan Complete. Found: " + found + " items of interest ---"));
                         return 1;
                     })
                 )

@@ -78,7 +78,7 @@ public class ConversationManager {
 
         if (activeEntity != null) {
             boolean timeout = (currentTick - lastMessageTick) > 1200; 
-            boolean tooFar = mc.player.distanceToSqr(activeEntity) > 2500; 
+            boolean tooFar = mc.player.distanceToSqr(activeEntity) > 576; 
             boolean deadOrRemoved = !activeEntity.isAlive() || activeEntity.isRemoved();
 
             if (timeout || tooFar || deadOrRemoved) {

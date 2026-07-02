@@ -424,7 +424,7 @@ public class PromptBuilder {
         }
 
         BlockPos playerPos = player.blockPosition();
-        int radius = 5;
+        int radius = 16;
         boolean fireFound = false;
         
         for (int x = -radius; x <= radius; x++) {

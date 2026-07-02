@@ -12,7 +12,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Mob; // NEW IMPORT
+import net.minecraft.world.entity.Mob; 
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -52,10 +52,7 @@ public class IdentityHandler {
                 }
             }
             
-            // --- NEW: Inject the Chatting Goal on the Server Side ---
             if (!event.getLevel().isClientSide() && entity instanceof Mob mob) {
-                // Priority 3 puts it below immediate survival mechanics (fleeing, attacking) 
-                // but above ambient wandering and looking randomly.
                 mob.goalSelector.addGoal(3, new ChattingGoal(mob));
             }
         }
@@ -86,6 +83,7 @@ public class IdentityHandler {
                 ChunkAccess chunk = serverLevel.getChunk(chunkPos.x + x, chunkPos.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
                 if (chunk == null) continue;
 
+                // 1. Standard Structure Starts
                 for (Map.Entry<Structure, StructureStart> entry : chunk.getAllStarts().entrySet()) {
                     StructureStart start = entry.getValue();
                     if (start != null && start.isValid()) {
@@ -95,6 +93,8 @@ public class IdentityHandler {
                             String structType = key.getPath();
                             BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                             double distSqr = pos.distSqr(startPos);
+                            // BUGFIX: Treat isInside as 0 distance so it wins ties, without inflating closestCivDist!
+                            double actualDist = start.getBoundingBox().isInside(pos) ? 0 : distSqr;
                             String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
                             
                             if (Config.isInList(Config.IGNORED_STRUCTURES, fullKey)) continue;
@@ -119,19 +119,74 @@ public class IdentityHandler {
                             if (isCiv || isNomad) {
                                 String biome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
                                 
-                                if (start.getBoundingBox().isInside(pos) || distSqr <= closestCivDist) {
-                                    closestCivDist = distSqr;
+                                if (actualDist <= closestCivDist) {
+                                    closestCivDist = actualDist;
                                     homeId = structId;
                                     data.putString("mcaichat_home_id", homeId);
                                     data.putString("mcaichat_home_type", structType);
                                 }
                                 nearbyCivs.add(structId + "|" + structType + "|" + biome + "|" + startPos.getX() + "|" + startPos.getZ());
                             } else if (isAdv && rollSecret) {
-                                if (distSqr < closestSecretDist) {
-                                    closestSecretDist = distSqr;
+                                if (actualDist < closestSecretDist) {
+                                    closestSecretDist = actualDist;
                                     secretType = structType;
                                     secretX = startPos.getX();
                                     secretZ = startPos.getZ();
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 2. Chest Loot Table Scanning for Ice & Fire Context
+                if (chunk instanceof net.minecraft.world.level.chunk.LevelChunk levelChunk) {
+                    for (Map.Entry<BlockPos, net.minecraft.world.level.block.entity.BlockEntity> entry : levelChunk.getBlockEntities().entrySet()) {
+                        net.minecraft.world.level.block.entity.BlockEntity be = entry.getValue();
+                        
+                        if (be instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity) {
+                            CompoundTag tag = be.saveWithFullMetadata();
+                            if (tag.contains("LootTable", 8)) {
+                                String lootTable = tag.getString("LootTable");
+                                if (lootTable.startsWith("iceandfire:")) {
+                                    String rawName = lootTable;
+                                    if (rawName.contains("/")) {
+                                        rawName = rawName.substring(rawName.lastIndexOf('/') + 1);
+                                    } else {
+                                        rawName = rawName.substring(rawName.indexOf(':') + 1);
+                                    }
+                                    
+                                    if (rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost") || rawName.endsWith("dragon_male_cave") || rawName.endsWith("dragon_female_cave") || rawName.equals("hydra_cave")) {
+                                        BlockPos bePos = entry.getKey();
+                                        double distSqr = pos.distSqr(bePos);
+                                        // Treat the chest as having a ~30 block bounding box radius so it beats overlapping vanilla structures
+                                        double actualDist = (distSqr <= 900) ? 0 : distSqr; 
+                                        
+                                        String structType = rawName;
+                                        String fullKey = "iceandfire:" + rawName;
+                                        String structId = fullKey + "_" + chunk.getPos().x + "_" + chunk.getPos().z;
+                                        
+                                        boolean isNomadL = rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost");
+                                        boolean isAdvL = !isNomadL;
+
+                                        if (isNomadL) {
+                                            String biome = serverLevel.getBiome(bePos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
+                                            if (actualDist <= closestCivDist) {
+                                                closestCivDist = actualDist;
+                                                homeId = structId;
+                                                data.putString("mcaichat_home_id", homeId);
+                                                data.putString("mcaichat_home_type", structType);
+                                            }
+                                            String civStr = structId + "|" + structType + "|" + biome + "|" + bePos.getX() + "|" + bePos.getZ();
+                                            if (!nearbyCivs.contains(civStr)) nearbyCivs.add(civStr);
+                                        } else if (isAdvL && rollSecret) {
+                                            if (actualDist < closestSecretDist) {
+                                                closestSecretDist = actualDist;
+                                                secretType = structType;
+                                                secretX = bePos.getX();
+                                                secretZ = bePos.getZ();
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
