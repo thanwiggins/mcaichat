@@ -121,6 +121,9 @@ public class ClientLoreManager {
             isNomad = true;
         } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) {
             // Both remain false (Adventure Structure)
+        } else if (structureType.startsWith("iceandfire:") && structureType.endsWith("_dragon_roost")) {
+            // Dragon roosts are detected via the resident dragon's home position, not a registered Structure
+            isNomad = true;
         } else {
             isCiv = structureType.contains("village") || structureType.contains("city") || 
                     structureType.contains("bastion") || structureType.contains("fortress") ||

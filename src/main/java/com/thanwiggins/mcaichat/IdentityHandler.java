@@ -134,7 +134,22 @@ public class IdentityHandler {
                 }
             }
         }
-        
+
+        // Dragon roosts are Features, not Structures, so the loop above never finds them - detect
+        // them separately via the resident dragon's home position (no-op without Ice and Fire).
+        DragonRoostFinder.Roost roost = DragonRoostFinder.findNearest(serverLevel, pos, radius * 16.0D);
+        if (roost != null && !Config.isInList(Config.IGNORED_STRUCTURES, roost.type())) {
+            String structType = roost.type().substring(roost.type().indexOf(':') + 1);
+
+            if (roost.distSqr() <= closestCivDist) {
+                closestCivDist = roost.distSqr();
+                homeId = roost.id();
+                data.putString("mcaichat_home_id", homeId);
+                data.putString("mcaichat_home_type", structType);
+            }
+            nearbyCivs.add(roost.id() + "|" + structType + "|" + roost.biome() + "|" + roost.pos().getX() + "|" + roost.pos().getZ());
+        }
+
         if (!nearbyCivs.isEmpty()) {
             ListTag civList = new ListTag();
             for (String civ : nearbyCivs) {

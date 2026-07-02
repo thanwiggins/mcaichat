@@ -72,6 +72,16 @@ public class ServerStructureTracker {
                     }
                 }
 
+                // Dragon roosts are Features, not Structures, so they can't be found above - detect
+                // them separately via the resident dragon's home position (no-op without Ice and Fire).
+                DragonRoostFinder.Roost roost = DragonRoostFinder.findNearest(serverLevel, playerPos, 256.0D);
+                if (roost != null && roost.distSqr() <= closestDistSqr) {
+                    closestDistSqr = roost.distSqr();
+                    foundId = roost.id();
+                    foundType = roost.type();
+                    foundBiome = roost.biome();
+                }
+
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
 
                 net.minecraft.world.phys.AABB searchBox = player.getBoundingBox().inflate(16.0D); 
