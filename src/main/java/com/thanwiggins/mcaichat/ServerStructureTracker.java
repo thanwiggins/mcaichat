@@ -33,80 +33,37 @@ public class ServerStructureTracker {
                 BlockPos playerPos = player.blockPosition();
                 ChunkPos centerChunk = new ChunkPos(playerPos);
 
-                // Isolate Vanilla Tracking
-                String foundVanillaId = "none";
-                String foundVanillaType = "none";
-                String foundVanillaBiome = "unknown";
-                double closestVanillaDist = 62500; 
-                
-                // Isolate Chest Tracking
-                String foundChestId = "none";
-                String foundChestType = "none";
-                String foundChestBiome = "unknown";
-                double closestChestDist = 62500;
+                String foundId = "none";
+                String foundType = "none";
+                String foundBiome = "unknown";
 
+                double closestDistSqr = 62500;
                 int radiusChunks = 16;
 
                 for (int x = -radiusChunks; x <= radiusChunks; x++) {
                     for (int z = -radiusChunks; z <= radiusChunks; z++) {
                         ChunkAccess chunk = serverLevel.getChunk(centerChunk.x + x, centerChunk.z + z, net.minecraft.world.level.chunk.ChunkStatus.STRUCTURE_STARTS, false);
-                        
+
                         if (chunk != null) {
-                            // 1. Vanilla Structure Check
                             Map<Structure, StructureStart> starts = chunk.getAllStarts();
                             for (Map.Entry<Structure, StructureStart> entry : starts.entrySet()) {
                                 StructureStart start = entry.getValue();
-                                
+
                                 if (start != null && start.isValid()) {
                                     BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                                     double distSqr = playerPos.distSqr(startPos);
-                                    
+
                                     // Properly handle 'isInside' as having 0 distance so it wins ties, but doesn't break the math
                                     double actualDist = start.getBoundingBox().isInside(playerPos) ? 0 : distSqr;
-                                    
-                                    if (actualDist <= closestVanillaDist) {
-                                        closestVanillaDist = actualDist;
+
+                                    if (actualDist <= closestDistSqr) {
+                                        closestDistSqr = actualDist;
                                         ResourceLocation key = serverLevel.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
-                                        
+
                                         if (key != null) {
-                                            foundVanillaType = key.toString();
-                                            foundVanillaId = foundVanillaType + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
-                                            foundVanillaBiome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // 2. Chest Check (Only scan 4 chunks in each direction for extreme performance)
-                            if (Math.abs(x) <= 4 && Math.abs(z) <= 4 && chunk instanceof net.minecraft.world.level.chunk.LevelChunk levelChunk) {
-                                for (Map.Entry<BlockPos, net.minecraft.world.level.block.entity.BlockEntity> entry : levelChunk.getBlockEntities().entrySet()) {
-                                    net.minecraft.world.level.block.entity.BlockEntity be = entry.getValue();
-                                    
-                                    if (be instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity) {
-                                        CompoundTag tag = be.saveWithFullMetadata();
-                                        if (tag.contains("LootTable", 8)) {
-                                            String lootTable = tag.getString("LootTable");
-                                            
-                                            if (lootTable.startsWith("iceandfire:")) {
-                                                String rawName = lootTable;
-                                                if (rawName.contains("/")) {
-                                                    rawName = rawName.substring(rawName.lastIndexOf('/') + 1);
-                                                } else {
-                                                    rawName = rawName.substring(rawName.indexOf(':') + 1);
-                                                }
-                                                
-                                                if (rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost") || rawName.endsWith("dragon_male_cave") || rawName.endsWith("dragon_female_cave") || rawName.equals("hydra_cave")) {
-                                                    BlockPos bePos = entry.getKey();
-                                                    double distSqr = playerPos.distSqr(bePos);
-                                                    
-                                                    if (distSqr <= closestChestDist) {
-                                                        closestChestDist = distSqr;
-                                                        foundChestType = "iceandfire:" + rawName;
-                                                        foundChestId = foundChestType + "_" + chunk.getPos().x + "_" + chunk.getPos().z;
-                                                        foundChestBiome = serverLevel.getBiome(bePos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                                    }
-                                                }
-                                            }
+                                            foundType = key.toString();
+                                            foundId = foundType + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+                                            foundBiome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
                                         }
                                     }
                                 }
@@ -115,18 +72,7 @@ public class ServerStructureTracker {
                     }
                 }
 
-                String finalId = foundVanillaId;
-                String finalType = foundVanillaType;
-                String finalBiome = foundVanillaBiome;
-
-                // Absolute Override: If a chest is within 50 blocks (2500 squared), it completely overrides Vanilla.
-                if (closestChestDist <= 2500) {
-                    finalId = foundChestId;
-                    finalType = foundChestType;
-                    finalBiome = foundChestBiome;
-                }
-
-                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(finalId, finalType, finalBiome));
+                NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
 
                 net.minecraft.world.phys.AABB searchBox = player.getBoundingBox().inflate(16.0D); 
                 java.util.List<net.minecraft.world.entity.Entity> nearbyNPCs = serverLevel.getEntities(player, searchBox, e -> Config.isWhitelisted(e));
@@ -179,12 +125,12 @@ public class ServerStructureTracker {
 
             if (attacker != null) {
                 if (attacker instanceof Player) {
-                    cause = "Murdered by the player";
+                    cause = "Slain by the player";
                 } else {
                     cause = "Slain by a " + attacker.getDisplayName().getString();
                 }
             } else {
-                cause = source.getLocalizedDeathMessage(entity).getString() + " (Natural/Environmental causes)";
+                cause = source.getLocalizedDeathMessage(entity).getString();
             }
 
             NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new NpcDeathPacket(entity.getUUID(), cause));

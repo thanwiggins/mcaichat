@@ -121,14 +121,6 @@ public class ClientLoreManager {
             isNomad = true;
         } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) {
             // Both remain false (Adventure Structure)
-        } else if (structureType.startsWith("iceandfire:")) {
-            // --- NEW: Hardcoded Ice and Fire mapping for the extracted Loot Tables ---
-            String rawName = structureType.substring(11);
-            if (rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost")) {
-                isNomad = true;
-            } else {
-                // By default, the male/female dragon/hydra caves remain Adventure structures
-            }
         } else {
             isCiv = structureType.contains("village") || structureType.contains("city") || 
                     structureType.contains("bastion") || structureType.contains("fortress") ||

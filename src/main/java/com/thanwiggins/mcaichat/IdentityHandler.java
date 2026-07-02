@@ -132,61 +132,6 @@ public class IdentityHandler {
                         }
                     }
                 }
-                
-                // 2. Chest Loot Table Scanning for Ice & Fire Context
-                if (chunk instanceof net.minecraft.world.level.chunk.LevelChunk levelChunk) {
-                    for (Map.Entry<BlockPos, net.minecraft.world.level.block.entity.BlockEntity> entry : levelChunk.getBlockEntities().entrySet()) {
-                        net.minecraft.world.level.block.entity.BlockEntity be = entry.getValue();
-                        
-                        if (be instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity) {
-                            CompoundTag tag = be.saveWithFullMetadata();
-                            if (tag.contains("LootTable", 8)) {
-                                String lootTable = tag.getString("LootTable");
-                                if (lootTable.startsWith("iceandfire:")) {
-                                    String rawName = lootTable;
-                                    if (rawName.contains("/")) {
-                                        rawName = rawName.substring(rawName.lastIndexOf('/') + 1);
-                                    } else {
-                                        rawName = rawName.substring(rawName.indexOf(':') + 1);
-                                    }
-                                    
-                                    if (rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost") || rawName.endsWith("dragon_male_cave") || rawName.endsWith("dragon_female_cave") || rawName.equals("hydra_cave")) {
-                                        BlockPos bePos = entry.getKey();
-                                        double distSqr = pos.distSqr(bePos);
-                                        // Treat the chest as having a ~30 block bounding box radius so it beats overlapping vanilla structures
-                                        double actualDist = (distSqr <= 900) ? 0 : distSqr; 
-                                        
-                                        String structType = rawName;
-                                        String fullKey = "iceandfire:" + rawName;
-                                        String structId = fullKey + "_" + chunk.getPos().x + "_" + chunk.getPos().z;
-                                        
-                                        boolean isNomadL = rawName.equals("cyclops_cave") || rawName.endsWith("dragon_roost");
-                                        boolean isAdvL = !isNomadL;
-
-                                        if (isNomadL) {
-                                            String biome = serverLevel.getBiome(bePos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
-                                            if (actualDist <= closestCivDist) {
-                                                closestCivDist = actualDist;
-                                                homeId = structId;
-                                                data.putString("mcaichat_home_id", homeId);
-                                                data.putString("mcaichat_home_type", structType);
-                                            }
-                                            String civStr = structId + "|" + structType + "|" + biome + "|" + bePos.getX() + "|" + bePos.getZ();
-                                            if (!nearbyCivs.contains(civStr)) nearbyCivs.add(civStr);
-                                        } else if (isAdvL && rollSecret) {
-                                            if (actualDist < closestSecretDist) {
-                                                closestSecretDist = actualDist;
-                                                secretType = structType;
-                                                secretX = bePos.getX();
-                                                secretZ = bePos.getZ();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
         
