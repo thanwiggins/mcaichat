@@ -15,15 +15,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 
+// Persists a generated name/category/backstory per discovered structure to disk per world, and
+// decides whether a newly-entered structure is a civilization (worth a Gemini-written history),
+// a nomad camp (name only, no lore call), or a generic adventure location.
 public class ClientLoreManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File LORE_DIR = FMLPaths.CONFIGDIR.get().resolve("mcaichat_lore").toFile();
     
     private static Map<String, StructureLore> loreMap = new HashMap<>();
     private static String currentWorldId = "default";
+
+    // The structure/roost the player is currently standing in, used by PromptBuilder to tag
+    // an NPC's home as "(here)" when the player and the NPC's home coincide.
     public static String currentStructureId = "none";
-    public static String currentStructureType = "none";
-    
+
     public static boolean debugLore = false;
 
     public static class StructureLore {
@@ -101,13 +106,13 @@ public class ClientLoreManager {
     public static void onStructureEntered(String structureId, String structureType, String biomeRaw) {
         if (structureId.equals("none") || structureId.equals(currentStructureId)) {
             currentStructureId = structureId;
-            currentStructureType = structureType;
-            return; 
+            return;
         }
-        
+
         currentStructureId = structureId;
-        currentStructureType = structureType;
-        
+
+        // Lore is generated once per structure and cached forever after - re-entering a
+        // known structure should never re-roll its name/category or re-trigger a Gemini call.
         if (loreMap.containsKey(structureId)) return;
         
         if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return;

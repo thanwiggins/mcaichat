@@ -14,16 +14,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+// Persists a rolling one-paragraph memory summary per NPC to disk (one JSON file per world),
+// so an NPC still remembers past conversations after the player logs out and back in.
 public class ClientMemoryManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File MEMORY_DIR = FMLPaths.CONFIGDIR.get().resolve("mcaichat_memory").toFile();
-    
+
     private static Map<UUID, EntityMemory> memoryMap = new HashMap<>();
     private static String currentWorldId = "default";
 
     public static class EntityMemory {
         public String summary;
-        public long lastConvoTick; // Changed to tick
+        public long lastConvoTick; // in-game tick, not wall-clock time, so elapsed time reads correctly across sessions
 
         public EntityMemory(String summary, long lastConvoTick) {
             this.summary = summary;
@@ -70,7 +72,6 @@ public class ClientMemoryManager {
         return memoryMap.get(entityId);
     }
 
-    // Pass the game tick in directly
     public static void updateMemory(UUID entityId, String newSummary, long currentTick) {
         memoryMap.put(entityId, new EntityMemory(newSummary, currentTick));
         saveWorldMemory();

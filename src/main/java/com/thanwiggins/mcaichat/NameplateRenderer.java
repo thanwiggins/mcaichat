@@ -36,7 +36,7 @@ public class NameplateRenderer {
                     colorCode = "§b"; // Aqua/Blue color
                 }
                 
-                // --- UPDATED: Swap between [ ! ] and [ * ] based on who initiated ---
+                // [ ! ] marks an NPC that spoke up on its own; [ * ] marks one the player is chatting with
                 if (ConversationManager.activeEntity != null && ConversationManager.activeEntity.getUUID().equals(entity.getUUID())) {
                     if (ConversationManager.isNpcInitiated) {
                         event.setContent(Component.literal("§e[ ! ] " + colorCode + name + " §e[ ! ]"));

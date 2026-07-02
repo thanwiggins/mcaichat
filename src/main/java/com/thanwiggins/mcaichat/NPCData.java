@@ -8,15 +8,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+// Flavor-text word lists loaded from bundled CSVs: NPC names/personalities, and realm names
+// used both for NPC home lore and for suggesting a name on the world-creation screen.
 public class NPCData {
     public static final List<String> NAMES = new ArrayList<>();
     public static final List<String> PERSONALITIES = new ArrayList<>();
-    public static final List<String> REALMS = new ArrayList<>(); // Added Realms list
+    public static final List<String> REALMS = new ArrayList<>();
 
     static {
         loadListFromFile("/assets/mcaichat/Names.csv", NAMES, "Alex");
         loadListFromFile("/assets/mcaichat/Personalities.csv", PERSONALITIES, "Mysterious and quiet.");
-        loadListFromFile("/assets/mcaichat/Realms.csv", REALMS, "Oakhaven"); // Added Realms loader
+        loadListFromFile("/assets/mcaichat/Realms.csv", REALMS, "Oakhaven");
     }
 
     private static void loadListFromFile(String path, List<String> list, String fallback) {
@@ -53,7 +55,6 @@ public class NPCData {
         return PERSONALITIES.get(random.nextInt(PERSONALITIES.size()));
     }
 
-    // Added Realms getter
     public static String getRandomRealm(Random random) {
         if (REALMS.isEmpty()) return "Unknown Realm";
         return REALMS.get(random.nextInt(REALMS.size()));

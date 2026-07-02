@@ -13,10 +13,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.concurrent.CompletableFuture;
 
+// All outbound calls to the Gemini API live here: live chat turns, end-of-conversation memory
+// summarization, and one-off structure lore generation. Every call is fire-and-forget async,
+// hopping back onto the client thread (via Minecraft.getInstance().execute) to touch game state.
 public class GeminiClient {
     private static final HttpClient client = HttpClient.newHttpClient();
 
-    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, String colorCode, long currentTick) {
+    // Sends one conversation turn (the full rolling history, not just the latest message) and
+    // prints the reply to chat. Used for both reactive player messages and NPC-initiated greetings.
+    public static void sendMessage(String apiKey, String systemPrompt, JsonArray history, String entityName, String colorCode) {
         CompletableFuture.runAsync(() -> {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
@@ -71,11 +76,15 @@ public class GeminiClient {
         });
     }
 
+    // Seeds the conversation with a synthetic "say hello" instruction so the NPC has something
+    // to respond to, then sends it through the normal sendMessage path.
     public static void initiateConversation(String apiKey, String systemPrompt, String entityName, String colorCode, long currentTick) {
         ConversationManager.addMessage("user", "Please initiate a conversation with me naturally. Say hello!", currentTick);
-        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, currentTick);
+        sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode);
     }
 
+    // Called once a conversation ends: asks Gemini to fold the just-finished conversation into the
+    // NPC's existing memory (rather than replacing it), so old facts survive across many conversations.
     public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick) {
         CompletableFuture.runAsync(() -> {
             try {
@@ -91,8 +100,9 @@ public class GeminiClient {
                 }
 
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
-                
-                // NEW: Updated prompt to strongly enforce a persistent, rolling memory
+
+                // Explicitly instructed to merge rather than replace, otherwise the model tends to
+                // drop older facts that weren't mentioned again in the most recent conversation.
                 String prompt = "You are updating your memory dossier on your interactions the player. Below is your 'Previous Memory' and the 'Recent Conversation'. "
                               + "Write a new, comprehensive memory summary (3-4 sentences) that retains all important historical details (like the player's name, past events, past attitudes, etc.) "
                               + "AND integrates any new things learned from the recent conversation. DO NOT drop important past facts just because they weren't mentioned in the recent conversation.\n\n"
@@ -137,6 +147,8 @@ public class GeminiClient {
         });
     }
 
+    // One-off call made the first time a player discovers a "civilization" structure - writes a
+    // short backstory that gets cached forever in ClientLoreManager (never re-rolled).
     public static void generateStructureLore(String apiKey, String structureId, String structureType, String structureName, String category, String biome) {
         CompletableFuture.runAsync(() -> {
             try {

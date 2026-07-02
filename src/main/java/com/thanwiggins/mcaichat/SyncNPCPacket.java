@@ -8,6 +8,9 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
+// Server -> client: mirrors an NPC's persistent AI data (name, personality, home, etc.) plus a
+// pre-formatted trade summary, since a client can't read another entity's full server-side state
+// (or Merchant offers) on its own.
 public class SyncNPCPacket {
     public final int entityId;
     public final CompoundTag aiData;

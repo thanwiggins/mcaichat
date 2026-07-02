@@ -7,6 +7,8 @@ import net.minecraft.world.entity.player.Player;
 import java.util.EnumSet;
 import java.util.UUID;
 
+// Server-side AI goal that makes an entity stop wandering and face the player while
+// ConversationManager (client-side) has flagged it as being in an active conversation.
 public class ChattingGoal extends Goal {
     private final Mob mob;
     private Player chattingPlayer;
@@ -35,8 +37,10 @@ public class ChattingGoal extends Goal {
             UUID playerId = this.mob.getPersistentData().getUUID("mcaichat_chatting_player");
             Player player = this.mob.level().getPlayerByUUID(playerId);
             
-            // 2500 matches the 50-block squared distance timeout in your ConversationManager
-            if (player != null && player.isAlive() && this.mob.distanceToSqr(player) < 2500.0D) { 
+            // Independent server-side safety net (50 blocks) in case the client never sends the
+            // "conversation ended" packet - e.g. a crash or disconnect - so the entity doesn't
+            // stand frozen facing an empty spot forever.
+            if (player != null && player.isAlive() && this.mob.distanceToSqr(player) < 2500.0D) {
                 this.chattingPlayer = player;
                 return true;
             }

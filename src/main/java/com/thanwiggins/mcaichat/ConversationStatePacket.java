@@ -7,6 +7,8 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
+// Client -> server: tells the server an NPC has entered or left a conversation with the sending
+// player. The server stores this on the entity so ChattingGoal can make it stop and face the player.
 public class ConversationStatePacket {
     public final int entityId;
     public final boolean isChatting;

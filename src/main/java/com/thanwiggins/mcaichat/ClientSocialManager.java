@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+// Persists which NPCs share a home structure (their "social circle") to disk per world, so NPCs
+// can reference their neighbors/roommates by name - and know if one of them has since died.
 public class ClientSocialManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File SOCIAL_DIR = FMLPaths.CONFIGDIR.get().resolve("mcaichat_social").toFile();

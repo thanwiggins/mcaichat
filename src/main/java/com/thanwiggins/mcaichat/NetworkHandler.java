@@ -14,24 +14,25 @@ public class NetworkHandler {
         PROTOCOL_VERSION::equals
     );
 
+    // Registration order fixes each packet's numeric ID for this mod version - add new packets
+    // at the end rather than reordering these, so old and new clients/servers never disagree on IDs.
     public static void register() {
         int id = 0;
         INSTANCE.registerMessage(id++, StructurePacket.class,
                 StructurePacket::encode,
                 StructurePacket::new,
                 StructurePacket::handle);
-                
+
         INSTANCE.registerMessage(id++, SyncNPCPacket.class,
                 SyncNPCPacket::encode,
                 SyncNPCPacket::new,
                 SyncNPCPacket::handle);
-                
+
         INSTANCE.registerMessage(id++, ConversationStatePacket.class,
                 ConversationStatePacket::encode,
                 ConversationStatePacket::new,
                 ConversationStatePacket::handle);
-                
-        // --- NEW: Register the NPC Death Packet ---
+
         INSTANCE.registerMessage(id++, NpcDeathPacket.class,
                 NpcDeathPacket::encode,
                 NpcDeathPacket::new,

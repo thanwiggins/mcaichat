@@ -11,6 +11,11 @@ import java.util.stream.Collectors;
 import com.faboslav.structurify.common.config.data.WorldgenDataProvider;
 import com.faboslav.structurify.common.config.data.StructureData;
 
+// Lets the player override how a structure is categorized (civilization/nomad/adventure/ignored),
+// which controls whether NPCs treat it as a "home", generate lore for it, or ignore it entirely.
+// The searchable list is seeded from three sources: structures already discovered in this world,
+// anything already present in the config lists, and Structurify's full registry of known worldgen
+// structures (so players can pre-configure structures they haven't found yet).
 public class StructureConfigScreen extends Screen {
     private final Screen previous;
     private EditBox searchBox;
@@ -32,8 +37,9 @@ public class StructureConfigScreen extends Screen {
         structSet.remove("");
         
         Map<String, StructureData> masterStructureList = WorldgenDataProvider.getStructures();
-        
-        // NEW: If the list is empty (because the game just started), force Structurify to build it
+
+        // Structurify only builds this list lazily; force it now if this screen is opened
+        // before anything else has triggered that load.
         if (masterStructureList == null || masterStructureList.isEmpty()) {
             WorldgenDataProvider.loadWorldgenData();
             masterStructureList = WorldgenDataProvider.getStructures();
@@ -110,6 +116,8 @@ public class StructureConfigScreen extends Screen {
         }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
+    // Cycles a structure through Civilization -> Nomad -> Adventure -> Ignored -> Civilization,
+    // clearing whichever list it was previously in before adding it to the next one.
     private void cycleStructureCategory(String id) {
         boolean isIgnored = Config.isInList(Config.IGNORED_STRUCTURES, id);
         boolean isCiv = Config.isInList(Config.CIV_STRUCTURES, id);
@@ -151,14 +159,16 @@ public class StructureConfigScreen extends Screen {
             int textWidth = this.font.width(structId);
             
             if (textWidth > maxWidth) {
+                // Long structure IDs get a marquee scroll: pause at the start, scroll left to
+                // reveal the end, then wrap back to the start on a loop.
                 gui.enableScissor(textX, yPos, textX + maxWidth, yPos + this.font.lineHeight);
                 long time = net.minecraft.Util.getMillis();
-                int scrollRange = textWidth - maxWidth + 20; 
-                int offset = (int) ((time / 30L) % (scrollRange + 40)); 
-                if (offset > scrollRange) offset = scrollRange; 
-                if (offset < 20) offset = 0; 
+                int scrollRange = textWidth - maxWidth + 20;
+                int offset = (int) ((time / 30L) % (scrollRange + 40));
+                if (offset > scrollRange) offset = scrollRange;
+                if (offset < 20) offset = 0;
                 else offset -= 20;
-                
+
                 gui.drawString(this.font, structId, textX - offset, yPos, 0xFFFFFF);
                 gui.disableScissor();
             } else {

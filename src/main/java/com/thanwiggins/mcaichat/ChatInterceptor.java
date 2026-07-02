@@ -14,6 +14,8 @@ import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
 
+// Cancels vanilla chat messages and reroutes them to whichever whitelisted entity the
+// player is looking at or standing near, so typing in chat feels like talking to that NPC.
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, value = Dist.CLIENT)
 public class ChatInterceptor {
 
@@ -53,8 +55,7 @@ public class ChatInterceptor {
             ConversationManager.endConversation(currentTick);
         }
         if (ConversationManager.activeEntity == null) {
-            // --- UPDATED: Pass false because the player initiated ---
-            ConversationManager.startConversation(targetEntity, currentTick, false);
+            ConversationManager.startConversation(targetEntity, currentTick, false); // false: the player started this, not the NPC
         }
 
         String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
@@ -70,7 +71,7 @@ public class ChatInterceptor {
         String colorCode = PromptBuilder.getSentimentColorCode(player, targetEntity);
 
         ConversationManager.addMessage("user", message, currentTick);
-        GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, currentTick);
+        GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode);
     }
 
     private static Entity getTargetEntity(Minecraft mc, Player player) {

@@ -20,14 +20,16 @@ import net.minecraftforge.network.PacketDistributor;
 
 import java.util.Map;
 
+// Runs once per second per player: reports the nearest structure (for client-side lore/naming) and
+// pushes fresh NPC data - including trade offers, which only the server can read - to that player.
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ServerStructureTracker {
 
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
         if (event.phase == TickEvent.Phase.END && !event.player.level().isClientSide) {
-            if (event.player.tickCount % 20 == 0) {
-                
+            if (event.player.tickCount % 20 == 0) { // once per second
+
                 ServerLevel serverLevel = (ServerLevel) event.player.level();
                 ServerPlayer player = (ServerPlayer) event.player;
                 BlockPos playerPos = player.blockPosition();
@@ -37,8 +39,8 @@ public class ServerStructureTracker {
                 String foundType = "none";
                 String foundBiome = "unknown";
 
-                double closestDistSqr = 62500;
-                int radiusChunks = 16;
+                double closestDistSqr = 62500; // 250 blocks, squared - structures farther than this are ignored
+                int radiusChunks = 16; // scans a 33x33 chunk (528x528 block) area around the player
 
                 for (int x = -radiusChunks; x <= radiusChunks; x++) {
                     for (int z = -radiusChunks; z <= radiusChunks; z++) {
@@ -53,7 +55,7 @@ public class ServerStructureTracker {
                                     BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                                     double distSqr = playerPos.distSqr(startPos);
 
-                                    // Properly handle 'isInside' as having 0 distance so it wins ties, but doesn't break the math
+                                    // Standing inside a structure always wins, even over one whose center is closer
                                     double actualDist = start.getBoundingBox().isInside(playerPos) ? 0 : distSqr;
 
                                     if (actualDist <= closestDistSqr) {
@@ -124,10 +126,13 @@ public class ServerStructureTracker {
         }
     }
 
+    // Broadcasts an NPC's cause of death to every client so ClientSocialManager can mark it deceased.
+    // This has to run server-side because DamageSource attribution (who/what actually landed the
+    // killing blow) isn't reliably available on the client.
     @SubscribeEvent
     public static void onEntityDeath(LivingDeathEvent event) {
         LivingEntity entity = event.getEntity();
-        
+
         if (!entity.level().isClientSide() && Config.isWhitelisted(entity)) {
             net.minecraft.world.damagesource.DamageSource source = event.getSource();
             net.minecraft.world.entity.Entity attacker = source.getEntity();

@@ -23,16 +23,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+// Gives whitelisted entities a persistent identity (name, personality, and eventually a home/secret)
+// the first time they're encountered, so the same villager keeps the same name and backstory forever.
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID)
 public class IdentityHandler {
 
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
         Entity entity = event.getEntity();
-        
+
         if (Config.isWhitelisted(entity)) {
             CompoundTag data = entity.getPersistentData();
-            
+
+            // Only roll a name/personality once per entity - re-joining a chunk shouldn't reroll them
             if (!data.contains("mcaichat_personality")) {
                 Random random = new Random(entity.getUUID().getLeastSignificantBits());
                 String name = NPCData.getRandomName(random);
@@ -53,21 +56,24 @@ public class IdentityHandler {
         }
     }
 
+    // Runs once per NPC (guarded by the caller checking for "mcaichat_home_id") to find its home
+    // structure, catalog nearby civilizations for small talk, and maybe hand it a "secret" to reveal.
+    // This is the expensive counterpart to ServerStructureTracker's per-tick nearest-structure lookup:
+    // that one just reports what's near the player right now, this one permanently tags one NPC.
     public static void generateWorldKnowledge(Entity entity, ServerLevel serverLevel) {
         CompoundTag data = entity.getPersistentData();
         BlockPos pos = entity.blockPosition();
         ChunkPos chunkPos = new ChunkPos(pos);
-        int radius = 16; 
-        
+        int radius = 16; // chunks - a 33x33 chunk (528x528 block) search area centered on the NPC
+
         Random random = new Random(entity.getUUID().getLeastSignificantBits());
         List<String> nearbyCivs = new ArrayList<>();
         String homeId = "";
-        double closestCivDist = 50 * 50; 
-        
-        boolean rollSecret = random.nextInt(100) < 5;
-        String npcName = data.getString("mcaichat_name");
-        if (npcName.isEmpty()) npcName = "Unknown NPC";
-        
+        double closestCivDist = 50 * 50; // blocks, squared - being within 50 blocks claims a structure as "home"
+
+
+        boolean rollSecret = random.nextInt(100) < 5; // 5% of NPCs are given a "secret" location to reveal in conversation
+
         double closestSecretDist = Double.MAX_VALUE;
         String secretType = "";
         int secretX = 0;
@@ -88,7 +94,8 @@ public class IdentityHandler {
                             String structType = key.getPath();
                             BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                             double distSqr = pos.distSqr(startPos);
-                            // BUGFIX: Treat isInside as 0 distance so it wins ties, without inflating closestCivDist!
+                            // Standing inside a structure's bounding box always wins, even if its center
+                            // (and thus raw distSqr) is technically farther away than a smaller nearby structure.
                             double actualDist = start.getBoundingBox().isInside(pos) ? 0 : distSqr;
                             String structId = fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
                             
@@ -105,10 +112,12 @@ public class IdentityHandler {
                             } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, fullKey)) {
                                 isAdv = true;
                             } else {
-                                isCiv = fullKey.contains("village") || fullKey.contains("city") || 
+                                // No explicit config category - guess from the structure's name.
+                                // Structures matching none of these keywords default to "adventure".
+                                isCiv = fullKey.contains("village") || fullKey.contains("city") ||
                                                 fullKey.contains("bastion") || fullKey.contains("fortress") ||
                                                 fullKey.contains("towns_and_towers") || fullKey.contains("valarian_conquest");
-                                if (!isCiv) isAdv = true; 
+                                if (!isCiv) isAdv = true;
                             }
                             
                             if (isCiv || isNomad) {

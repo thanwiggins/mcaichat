@@ -15,6 +15,9 @@ import net.minecraft.world.entity.monster.Enemy;
 import java.util.*;
 import java.util.stream.Collectors;
 
+// Lets the player toggle chat-whitelisting per entity type and override how it's categorized
+// (monster/creature/wildlife) for the "nearby danger" section of the AI prompt. Lists every
+// registered entity type in the game, searchable, so this covers modded entities too.
 public class EntityConfigScreen extends Screen {
     private final Screen previous;
     private EditBox searchBox;
@@ -97,6 +100,8 @@ public class EntityConfigScreen extends Screen {
         }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
+    // Cycles an entity through Monster -> Creature -> Wildlife -> Ignored -> Monster (from
+    // whichever category it's currently in, including the engine's own default guess).
     private void cycleEntityCategory(String id) {
         boolean isIgnored = Config.isInList(Config.BLACKLIST_ENTITIES, id);
         boolean isMonster = Config.isInList(Config.CUSTOM_MONSTERS, id);
@@ -138,14 +143,16 @@ public class EntityConfigScreen extends Screen {
             int textWidth = this.font.width(entityId);
             
             if (textWidth > maxWidth) {
+                // Long entity IDs get a marquee scroll: pause at the start, scroll left to
+                // reveal the end, then wrap back to the start on a loop.
                 gui.enableScissor(textX, yPos, textX + maxWidth, yPos + this.font.lineHeight);
                 long time = net.minecraft.Util.getMillis();
-                int scrollRange = textWidth - maxWidth + 20; 
-                int offset = (int) ((time / 30L) % (scrollRange + 40)); 
-                if (offset > scrollRange) offset = scrollRange; 
-                if (offset < 20) offset = 0; 
+                int scrollRange = textWidth - maxWidth + 20;
+                int offset = (int) ((time / 30L) % (scrollRange + 40));
+                if (offset > scrollRange) offset = scrollRange;
+                if (offset < 20) offset = 0;
                 else offset -= 20;
-                
+
                 gui.drawString(this.font, entityId, textX - offset, yPos, 0xFFFFFF);
                 gui.disableScissor();
             } else {

@@ -6,6 +6,8 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.UUID;
 import java.util.function.Supplier;
 
+// Server -> client (broadcast to all): reports an NPC's cause of death so every client's
+// ClientSocialManager can mark that citizen deceased, even if the death happened out of view.
 public class NpcDeathPacket {
     public final UUID entityUuid;
     public final String cause;

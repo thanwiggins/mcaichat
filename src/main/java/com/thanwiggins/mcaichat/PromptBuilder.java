@@ -33,9 +33,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+// Assembles the full Gemini system prompt for a conversation out of five context sections
+// (ambient details, world knowledge, personal background, social circle, exigent circumstances),
+// filled into a user-editable template file. There are two templates - one for a player-initiated
+// chat, one for an NPC-initiated greeting - since the tone and framing differ (responding vs.
+// speaking up first) even though the underlying context-gathering is identical.
 public class PromptBuilder {
     private static final File PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_prompt.txt").toFile();
-    private static final File INIT_PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_init_prompt.txt").toFile(); // NEW
+    private static final File INIT_PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_init_prompt.txt").toFile();
 
     private static final String DEFAULT_PROMPT = """
         You are a character in Minecraft conversing with a player in real-time.
@@ -104,7 +109,6 @@ public class PromptBuilder {
         """;
 
     public static String getSystemPrompt(Player player, Entity target, boolean isInitiating) {
-        // Choose which base prompt to load based on the boolean flag
         String basePrompt = isInitiating ? loadInitPromptFile() : loadPromptFile();
         
         Level level = player.level();
@@ -124,6 +128,8 @@ public class PromptBuilder {
                 .replace("{EXIGENT_CIRCUMSTANCES}", exigent.isEmpty() ? "None." : exigent);
     }
 
+    // Writes the default template to disk on first use so players can find and edit it, then
+    // always reads back from disk afterward - letting edits take effect without a restart.
     private static String loadPromptFile() {
         try {
             if (!PROMPT_FILE.exists()) {
@@ -136,7 +142,6 @@ public class PromptBuilder {
         }
     }
 
-    // NEW: Loader for the initiation prompt
     private static String loadInitPromptFile() {
         try {
             if (!INIT_PROMPT_FILE.exists()) {
@@ -149,6 +154,8 @@ public class PromptBuilder {
         }
     }
 
+    // Passive scene-setting: biome, time of day, weather, season (if Serene Seasons is installed),
+    // and world name.
     private static String buildAmbientDetails(Level level, BlockPos pos) {
         Holder<Biome> biomeHolder = level.getBiome(pos);
         String biomeNameRaw = biomeHolder.unwrapKey().map(key -> key.location().getPath()).orElse("unknown");
@@ -159,7 +166,9 @@ public class PromptBuilder {
         
         String weather = level.isThundering() ? "Thunderstorm" : level.isRaining() ? "Raining" : "Clear";
         
-        String season = "Unknown Season"; 
+        // Serene Seasons is an optional soft dependency, accessed via reflection so this mod still
+        // loads fine without it installed. Any failure here just leaves the season unknown.
+        String season = "Unknown Season";
         if (ModList.get().isLoaded("sereneseasons")) {
             try {
                 Class<?> helperClass = Class.forName("sereneseasons.api.season.SeasonHelper");
@@ -190,18 +199,20 @@ public class PromptBuilder {
                 biomeName, timeOfDay, weather, season, worldName);
     }
 
+    // Renders the NBT that IdentityHandler.generateWorldKnowledge computed server-side (home
+    // structure, nearby civilizations, an optional secret location) into prose for the prompt.
     private static String buildWorldKnowledge(BlockPos pos, Entity target) {
         String knowledge = "";
         CompoundTag data = target.getPersistentData();
-        
+
         // 1. Home Knowledge
         String homeId = data.getString("mcaichat_home_id");
         if (!homeId.isEmpty()) {
             String homeType = formatName(data.getString("mcaichat_home_type"));
             ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
             String homeName = (homeLore != null) ? homeLore.name : homeType;
-            
-            // --- NEW: Append (here) if currently inside their home structure ---
+
+            // Let the NPC know when the player is standing in its home right now
             if (homeId.equals(ClientLoreManager.currentStructureId)) {
                 homeName += " (here)";
             }
@@ -229,9 +240,10 @@ public class PromptBuilder {
                     if (civId.equals(homeId)) continue;
                     
                     ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
-                    String civName = (civLore != null) ? civLore.name : civType; 
-                    
-                    // --- NEW: Append the structure type if a custom name was assigned ---
+                    String civName = (civLore != null) ? civLore.name : civType;
+
+                    // Clarify with the raw structure type when it was given a custom/generated name,
+                    // e.g. "Oakhaven (Village)" instead of just "Oakhaven"
                     if (civLore != null && !civLore.name.equals(civType)) {
                         civName += " (" + civType + ")";
                     }
@@ -255,7 +267,9 @@ public class PromptBuilder {
             
             double dist = Math.sqrt(Math.pow(pos.getX() - secretX, 2) + Math.pow(pos.getZ() - secretZ, 2));
             String direction = getDirection(pos.getX(), pos.getZ(), secretX, secretZ);
-            
+
+            // Described in vague relative terms rather than exact coordinates - the NPC "knows of"
+            // the location, it doesn't have a map with a marker on it
             String relativeDistance;
             if (dist < 50) relativeDistance = "very close";
             else if (dist < 150) relativeDistance = "nearby";
@@ -268,6 +282,8 @@ public class PromptBuilder {
         return knowledge.trim();
     }
 
+    // One-word-ish capability tag ("Warrior", "Merchant", etc.) reused by both the full prompt
+    // and NameplateRenderer's social-circle registration, so both stay in sync.
     public static String getShortCapabilityString(Entity target) {
         String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
         boolean isMonster = target instanceof Monster;
@@ -284,6 +300,8 @@ public class PromptBuilder {
         return "Citizen";
     }
     
+    // Nameplate/chat color reflecting how this entity feels about the player - monster
+    // hostility by default, or faction standing for Valarian Conquest's faction-aware units.
     public static String getSentimentColorCode(Player player, Entity target) {
         String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
         boolean isMonster = target instanceof Monster;
@@ -302,6 +320,8 @@ public class PromptBuilder {
         return isMonster ? "§c" : "§a"; // Red for monsters, Green for normal friendly entities
     }
 
+    // The NPC's own identity: name, entity type, personality, sentiment toward the player,
+    // fighting/trading capabilities, and its memory of past conversations.
     private static String buildPersonalBackground(Player player, Entity target) {
         CompoundTag data = target.getPersistentData();
         String name = data.getString("mcaichat_name");
@@ -340,25 +360,26 @@ public class PromptBuilder {
             }
         }
         
-        // --- UPDATED: Read trades from the server-synced packet! ---
+        // A client can't read another entity's Merchant offers directly, so this is pre-formatted
+        // server-side (see ServerStructureTracker) and synced down via SyncNPCPacket instead.
         String tradingInfo = data.getString("mcaichat_trades");
         if (isMerchant && tradingInfo.isEmpty()) {
             tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
         }
-        
-        // Fetch Conversation Memory
+
         ClientMemoryManager.EntityMemory mem = ClientMemoryManager.getMemory(target.getUUID());
         String memoryStr = "None (First interaction with the player)";
         String timeElapsedStr = "N/A";
 
         if (mem != null) {
             memoryStr = mem.summary;
-            
-            // Calculate time purely based on Minecraft game ticks
+
+            // Measured in game ticks rather than real time, so "how long ago" reflects time spent
+            // in-world rather than counting time while the game was closed.
             long currentTick = player.level().getGameTime();
             long diffTicks = currentTick - mem.lastConvoTick;
-            
-            // 1 in-game hour = 1000 ticks. 1 in-game day = 24000 ticks.
+
+            // 1 in-game hour = 1000 ticks, 1 in-game day = 24000 ticks
             long inGameHours = diffTicks / 1000;
             long inGameDays = diffTicks / 24000;
             
@@ -375,6 +396,8 @@ public class PromptBuilder {
                 name, entityType, personality, sentiment, capability, tradingInfo, memoryStr, timeElapsedStr);
     }
 
+    // Other NPCs registered under the same home structure (see NameplateRenderer), so this NPC
+    // can talk about its "neighbors" - including whether one of them has since died.
     private static String buildSocialCircle(Entity target) {
         CompoundTag data = target.getPersistentData();
         String homeId = data.getString("mcaichat_home_id");
@@ -408,21 +431,25 @@ public class PromptBuilder {
         return sb.toString().trim();
     }
 
+    // Surfaces short-lived, urgent situational facts (danger, injury, nearby threats) that should
+    // outweigh an NPC's default personality/mood for the duration of this one response.
     private static String buildExigentCircumstances(Level level, Player player, Entity target) {
         StringBuilder exigent = new StringBuilder();
 
-        if (player.getHealth() <= 6.0f) exigent.append("The player is severely injured. ");
-        if (player.getFoodData().getFoodLevel() <= 6) exigent.append("The player is starving. ");
+        if (player.getHealth() <= 6.0f) exigent.append("The player is severely injured. "); // 3 hearts or less
+        if (player.getFoodData().getFoodLevel() <= 6) exigent.append("The player is starving. "); // 3 drumsticks or less
 
         for (MobEffectInstance effect : player.getActiveEffects()) {
             String effectName = effect.getEffect().getDisplayName().getString();
             exigent.append("The player has a '").append(effectName).append("' status effect. ");
         }
 
+        // Brute-force block scan for nearby fire - expensive (a 33x33x33 cube), but this only
+        // runs once per chat message/greeting, not per tick.
         BlockPos playerPos = player.blockPosition();
         int radius = 16;
         boolean fireFound = false;
-        
+
         for (int x = -radius; x <= radius; x++) {
             for (int y = -radius; y <= radius; y++) {
                 for (int z = -radius; z <= radius; z++) {
@@ -443,11 +470,12 @@ public class PromptBuilder {
         
         AABB dangerBox = target.getBoundingBox().inflate(24.0D);
 
-        // Removed the !AmbientCreature and !WaterAnimal exclusions
-        List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox, 
-            entity -> entity != target 
-                && entity != player 
-                && !Config.isBlacklisted(entity) 
+        // Every non-blacklisted, non-chattable living entity nearby - hostile, passive, or
+        // ambient alike - gets surfaced below, just sorted into separate buckets by type.
+        List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox,
+            entity -> entity != target
+                && entity != player
+                && !Config.isBlacklisted(entity)
                 && !Config.isWhitelisted(entity)
         );
 
@@ -470,7 +498,7 @@ public class PromptBuilder {
             } else if (Config.isInList(Config.CUSTOM_WILDLIFE, registryName)) {
                 isWildlife = true;
             } else {
-                // Default logic
+                // No explicit config override - guess from the entity's own vanilla category/interfaces
                 if (entity instanceof Enemy || entity.getType().getCategory() == MobCategory.MONSTER) {
                     isHostile = true;
                 } else if (entity instanceof AmbientCreature || entity instanceof WaterAnimal) {
@@ -507,7 +535,7 @@ public class PromptBuilder {
         if (target instanceof LivingEntity livingTarget) {
             float currentHealth = livingTarget.getHealth();
             float maxHealth = livingTarget.getMaxHealth();
-            if (currentHealth <= (maxHealth * 0.3f)) {
+            if (currentHealth <= (maxHealth * 0.3f)) { // below 30% of max health
                 exigent.append("You are severely injured and near death. ");
             }
             
@@ -520,10 +548,12 @@ public class PromptBuilder {
         return exigent.toString().trim();
     }
 
+    // Reduces a relative offset to one of 8 compass directions - biased toward the cardinal
+    // directions (a 2:1 ratio) rather than splitting evenly into 8 equal angular slices.
     private static String getDirection(int fromX, int fromZ, int toX, int toZ) {
         int dx = toX - fromX;
         int dz = toZ - fromZ;
-        
+
         if (Math.abs(dx) > Math.abs(dz) * 2) {
             return dx > 0 ? "east" : "west";
         } else if (Math.abs(dz) > Math.abs(dx) * 2) {
