@@ -6,9 +6,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.IronGolem;
-import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.ambient.AmbientCreature;
 import net.minecraft.world.entity.animal.WaterAnimal;
@@ -18,7 +16,6 @@ import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.trading.Merchant;
-import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
@@ -35,7 +32,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 public class PromptBuilder {
     private static final File PROMPT_FILE = FMLPaths.CONFIGDIR.get().resolve("mcaichat_prompt.txt").toFile();

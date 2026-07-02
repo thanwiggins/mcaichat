@@ -1,8 +1,5 @@
 package com.thanwiggins.mcaichat;
 
-import com.mojang.logging.LogUtils;
-import org.slf4j.Logger;
-
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -28,8 +25,6 @@ import java.util.Random;
 
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID)
 public class IdentityHandler {
-
-    private static final Logger LOGGER = LogUtils.getLogger();
 
     @SubscribeEvent
     public static void onEntityJoin(EntityJoinLevelEvent event) {
