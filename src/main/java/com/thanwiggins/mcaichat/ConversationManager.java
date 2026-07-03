@@ -125,15 +125,19 @@ public class ConversationManager {
                 // re-roll again next cycle.
                 initiationCooldowns.put(target.getUUID(), currentTick);
 
-                double roll = Math.random(); // 50/50 chance the NPC actually speaks up
+                // NPCs that already have a memory of the player (i.e. this isn't their first
+                // interaction) are far more eager to speak up than total strangers.
+                boolean knowsPlayer = ClientMemoryManager.getMemory(target.getUUID()) != null;
+                double chance = knowsPlayer ? 0.5 : 0.1;
+                double roll = Math.random();
 
                 if (debugInit) {
                     mc.player.sendSystemMessage(Component.literal(
-                        "§e[Init Debug] §fRolled " + String.format("%.2f", roll) + " (Needs < 0.50) for " + target.getDisplayName().getString()
+                        "§e[Init Debug] §fRolled " + String.format("%.2f", roll) + " (Needs < " + String.format("%.2f", chance) + ") for " + target.getDisplayName().getString()
                     ));
                 }
 
-                if (roll < 0.5) {
+                if (roll < chance) {
                     lastInitiationTick = currentTick;
                     startConversation(target, currentTick, true); // true: the NPC initiated
 

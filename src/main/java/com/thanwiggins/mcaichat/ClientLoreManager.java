@@ -93,6 +93,21 @@ public class ClientLoreManager {
         }
     }
 
+    // Deletes lore files for worlds that no longer show up in the singleplayer world list -
+    // called by WorldDataCleaner once that list (re)loads, since that's the only reliable moment
+    // we know a world was deleted.
+    public static void pruneDeletedWorlds(Set<String> existingWorldIds) {
+        File[] files = LORE_DIR.listFiles((dir, name) -> name.startsWith("sp_") && name.endsWith(".json"));
+        if (files == null) return;
+
+        for (File file : files) {
+            String worldId = file.getName().substring(0, file.getName().length() - ".json".length());
+            if (!existingWorldIds.contains(worldId)) {
+                file.delete();
+            }
+        }
+    }
+
     public static Set<String> getKnownStructureKeys() {
         Set<String> keys = new HashSet<>();
         for (StructureLore lore : loreMap.values()) {
