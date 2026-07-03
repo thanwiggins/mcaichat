@@ -85,12 +85,12 @@ public class EntityConfigScreen extends Screen {
             if (Config.isInList(Config.BLACKLIST_ENTITIES, entityId)) currentCat = "Ignored";
             else if (Config.isInList(Config.CUSTOM_MONSTERS, entityId)) currentCat = "Monster";
             else if (Config.isInList(Config.CUSTOM_CREATURES, entityId)) currentCat = "Creature";
-            else if (Config.isInList(Config.CUSTOM_WILDLIFE, entityId)) currentCat = "Wildlife";
+            else if (Config.isInList(Config.CUSTOM_WILDLIFE, entityId)) currentCat = "Ambient";
             else {
                 EntityType<?> type = ForgeRegistries.ENTITY_TYPES.getValue(new ResourceLocation(entityId));
                 boolean isMonster = type != null && (type.getCategory() == MobCategory.MONSTER || Enemy.class.isAssignableFrom(type.getBaseClass()));
                 boolean isAmbient = type != null && (type.getCategory() == MobCategory.AMBIENT || AmbientCreature.class.isAssignableFrom(type.getBaseClass()) || WaterAnimal.class.isAssignableFrom(type.getBaseClass()));
-                currentCat = "Def. (" + (isMonster ? "Monster" : (isAmbient ? "Wild." : "Creature")) + ")";
+                currentCat = "Def. (" + (isMonster ? "Monster" : (isAmbient ? "Amb." : "Creature")) + ")";
             }
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
@@ -128,7 +128,7 @@ public class EntityConfigScreen extends Screen {
         }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
-    // Cycles an entity through Monster -> Creature -> Wildlife -> Ignored -> Monster (from
+    // Cycles an entity through Monster -> Creature -> Ambient -> Ignored -> Monster (from
     // whichever category it's currently in, including the engine's own default guess).
     private void cycleEntityCategory(String id) {
         boolean isIgnored = Config.isInList(Config.BLACKLIST_ENTITIES, id);

@@ -94,13 +94,13 @@ public class StructureConfigScreen extends Screen {
             String currentCat = "";
             if (Config.isInList(Config.IGNORED_STRUCTURES, structId)) currentCat = "Ignored";
             else if (Config.isInList(Config.CIV_STRUCTURES, structId)) currentCat = "Civilization";
-            else if (Config.isInList(Config.NOMAD_STRUCTURES, structId)) currentCat = "Nomad";
-            else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structId)) currentCat = "Adventure";
+            else if (Config.isInList(Config.NOMAD_STRUCTURES, structId)) currentCat = "Standard";
+            else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structId)) currentCat = "Hidden";
             else {
-                boolean isCiv = structId.contains("village") || structId.contains("city") || 
+                boolean isCiv = structId.contains("village") || structId.contains("city") ||
                                 structId.contains("bastion") || structId.contains("fortress") ||
                                 structId.contains("towns_and_towers") || structId.contains("valarian_conquest");
-                currentCat = "Default (" + (isCiv ? "Civ." : "Adv.") + ")";
+                currentCat = "Default (" + (isCiv ? "Civ." : "Hid.") + ")";
             }
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
@@ -116,7 +116,7 @@ public class StructureConfigScreen extends Screen {
         }).bounds(centerX - 150, this.height - 30, 300, 20).build());
     }
 
-    // Cycles a structure through Civilization -> Nomad -> Adventure -> Ignored -> Civilization,
+    // Cycles a structure through Civilization -> Standard -> Hidden -> Ignored -> Civilization,
     // clearing whichever list it was previously in before adding it to the next one.
     private void cycleStructureCategory(String id) {
         boolean isIgnored = Config.isInList(Config.IGNORED_STRUCTURES, id);

@@ -411,6 +411,7 @@ public class PromptBuilder {
         if (player.getFoodData().getFoodLevel() <= 6) exigent.append("The player is starving. "); // 3 drumsticks or less
 
         for (MobEffectInstance effect : player.getActiveEffects()) {
+            if (!Config.isNarrativeEffect(effect)) continue;
             String effectName = effect.getEffect().getDisplayName().getString();
             exigent.append("The player has a '").append(effectName).append("' status effect. ");
         }

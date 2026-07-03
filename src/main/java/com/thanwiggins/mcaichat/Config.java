@@ -88,4 +88,30 @@ public class Config {
         String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
         return isInList(WANDERER_ENTITIES, registryName);
     }
+
+    // Mods that implement NPC AI (guarding, patrolling, following, weapon cooldowns) as invisible
+    // MobEffects rather than real gameplay conditions. Valarian Conquest applies these permanently
+    // (durations in the hundreds of thousands of ticks) whenever an NPC is given a command, so an
+    // NPC would otherwise narrate them as if they were an actual potion effect on their character.
+    private static final java.util.Set<String> AI_STATE_EFFECT_MODS = java.util.Set.of("valarian_conquest");
+
+    // Valarian Conquest's guard/stand-ground AI reapplies vanilla Slowness at amplifier 200 every
+    // tick to lock an NPC in place - a movement-lock hack, not a real status condition an NPC would
+    // describe feeling. Amplifier 1 (e.g. from stepping on spikes) is a real gameplay effect and
+    // is left alone.
+    private static final int FAKE_SLOWNESS_AMPLIFIER_THRESHOLD = 200;
+
+    public static boolean isNarrativeEffect(net.minecraft.world.effect.MobEffectInstance effect) {
+        net.minecraft.world.effect.MobEffect mobEffect = effect.getEffect();
+
+        net.minecraft.resources.ResourceLocation id = net.minecraftforge.registries.ForgeRegistries.MOB_EFFECTS.getKey(mobEffect);
+        if (id != null && AI_STATE_EFFECT_MODS.contains(id.getNamespace())) return false;
+
+        if (mobEffect == net.minecraft.world.effect.MobEffects.MOVEMENT_SLOWDOWN
+                && effect.getAmplifier() >= FAKE_SLOWNESS_AMPLIFIER_THRESHOLD) {
+            return false;
+        }
+
+        return true;
+    }
 }

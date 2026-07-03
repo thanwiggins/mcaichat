@@ -126,6 +126,7 @@ public class ServerStructureTracker {
                     if (npc instanceof net.minecraft.world.entity.LivingEntity livingNpc) {
                         StringBuilder effects = new StringBuilder();
                         for (net.minecraft.world.effect.MobEffectInstance effect : livingNpc.getActiveEffects()) {
+                            if (!Config.isNarrativeEffect(effect)) continue;
                             if (effects.length() > 0) effects.append(",");
                             effects.append(effect.getEffect().getDisplayName().getString());
                         }
