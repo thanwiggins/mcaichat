@@ -114,7 +114,7 @@ public class ConversationManager {
             List<Entity> nearby = mc.level.getEntities(mc.player, box, e ->
                 Config.isWhitelisted(e) && !Config.isBlacklisted(e) &&
                 !e.isInvisible() && // an invisible NPC shouldn't give away its position by speaking up
-                (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 6000) && // 5 minute per-NPC cooldown
+                (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 2400) && // 2 minute per-NPC cooldown
                 mc.player.hasLineOfSight(e)
             );
 
@@ -126,9 +126,16 @@ public class ConversationManager {
                 initiationCooldowns.put(target.getUUID(), currentTick);
 
                 // NPCs that already have a memory of the player (i.e. this isn't their first
-                // interaction) are far more eager to speak up than total strangers.
+                // interaction) are far more eager to speak up than total strangers. Among strangers,
+                // ones already friendly toward the player are likelier to strike up a chat than
+                // hostile ones.
                 boolean knowsPlayer = ClientMemoryManager.getMemory(target.getUUID()) != null;
-                double chance = knowsPlayer ? 0.5 : 0.1;
+                double chance;
+                if (knowsPlayer) {
+                    chance = 0.5;
+                } else {
+                    chance = PromptBuilder.isHostileToPlayer(mc.player, target) ? 0.1 : 0.25;
+                }
                 double roll = Math.random();
 
                 if (debugInit) {

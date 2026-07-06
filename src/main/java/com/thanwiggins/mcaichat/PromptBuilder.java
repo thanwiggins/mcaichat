@@ -288,6 +288,12 @@ public class PromptBuilder {
         return isMonster ? "§c" : "§a"; // Red for monsters, Green for normal friendly entities
     }
 
+    // Simple friendly/hostile split for callers that just need a boolean (e.g. conversation-initiation
+    // odds), collapsing getSentimentColorCode's "Suspicious/Unaligned" (yellow) case into friendly.
+    public static boolean isHostileToPlayer(Player player, Entity target) {
+        return getSentimentColorCode(player, target).equals("§c");
+    }
+
     // The NPC's own identity: name, entity type, personality, sentiment toward the player,
     // fighting/trading capabilities, and its memory of past conversations.
     private static String buildPersonalBackground(Player player, Entity target) {
