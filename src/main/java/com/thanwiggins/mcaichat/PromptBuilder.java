@@ -447,14 +447,17 @@ public class PromptBuilder {
         }
         
         AABB dangerBox = target.getBoundingBox().inflate(16.0D);
+        LivingEntity targetLiving = target instanceof LivingEntity le ? le : null;
 
         // Every non-blacklisted, non-chattable living entity nearby - hostile, passive, or
         // ambient alike - gets surfaced below, just sorted into separate buckets by type.
+        // Line-of-sight is required so the NPC can't "sense" threats through walls.
         List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox,
             entity -> entity != target
                 && entity != player
                 && !Config.isBlacklisted(entity)
                 && !Config.isWhitelisted(entity)
+                && (targetLiving == null || targetLiving.hasLineOfSight(entity))
         );
 
         List<String> hostileNames = new ArrayList<>();
