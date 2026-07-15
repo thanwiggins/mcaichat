@@ -3,6 +3,7 @@ package com.thanwiggins.mcaichat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
@@ -78,14 +79,15 @@ public class ChatInterceptor {
         HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();
-            if (Config.isWhitelisted(hitEntity)) {
+            if (Config.isWhitelisted(hitEntity) && !(hitEntity instanceof LivingEntity le && le.isSleeping())) {
                 return hitEntity;
             }
         }
 
         AABB searchBox = player.getBoundingBox().inflate(8.0D);
-        List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, e -> 
-            Config.isWhitelisted(e) && player.hasLineOfSight(e)
+        List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, e ->
+            Config.isWhitelisted(e) && player.hasLineOfSight(e) &&
+            !(e instanceof LivingEntity le && le.isSleeping()) // asleep in bed - can't be woken up to chat
         );
 
         Entity closest = null;

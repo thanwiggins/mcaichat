@@ -19,6 +19,7 @@ import net.minecraft.world.item.trading.Merchant;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -102,7 +103,7 @@ public class PromptBuilder {
         Level level = player.level();
         BlockPos pos = target.blockPosition();
 
-        String ambient = buildAmbientDetails(level, pos);
+        String ambient = buildAmbientDetails(level, pos, target.getName().getString());
         String world = buildWorldKnowledge(pos, target);
         String background = buildPersonalBackground(player, target);
         String special = buildSpecialInstructions(target);
@@ -127,7 +128,7 @@ public class PromptBuilder {
 
     // Passive scene-setting: biome, time of day, weather, season (if Serene Seasons is installed),
     // and world name.
-    private static String buildAmbientDetails(Level level, BlockPos pos) {
+    private static String buildAmbientDetails(Level level, BlockPos pos, String entityName) {
         Holder<Biome> biomeHolder = level.getBiome(pos);
         String biomeNameRaw = biomeHolder.unwrapKey().map(key -> key.location().getPath()).orElse("unknown");
         String biomeName = formatName(biomeNameRaw);
@@ -166,8 +167,128 @@ public class PromptBuilder {
             worldName = mc.getCurrentServer().name;
         }
 
-        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s | World Name: %s", 
-                biomeName, timeOfDay, weather, season, worldName);
+        String location = getLocation(level, pos, entityName);
+
+        if (location.equals("Cave")) {
+            return String.format("Location: %s | World Name: %s", location, worldName);
+        }
+
+        return String.format("Biome: %s | Time: %s | Weather: %s | Season: %s | Location: %s | World Name: %s",
+                biomeName, timeOfDay, weather, season, location, worldName);
+    }
+
+    // Records a step-by-step trace of the most recent Outdoors/Indoors/Cave determination, plus
+    // the level/pos/entityName it ran against, so the "/aichat location" debug command can both
+    // display it and re-run the retired algorithm (see getLocationAirRatioDebug) against the
+    // exact same spot for a side-by-side comparison.
+    public static class LocationDebug {
+        public String entityName = "N/A";
+        public Level level;
+        public BlockPos pos;
+        public List<String> steps = new ArrayList<>();
+        public String result = "N/A";
+    }
+
+    public static LocationDebug lastLocationDebug = new LocationDebug();
+
+    // Classifies the NPC's surroundings as Outdoors/Indoors/Cave. Sky visibility alone can't tell
+    // an underground cave apart from a covered structure, so a covered position is further checked
+    // against the local terrain height (not a fixed world Y, so high-elevation caves still count),
+    // then how thick the ceiling directly overhead actually is - a thin cap reads as Indoors (a
+    // roof) regardless of how much open air/cavern space is below it, which the air-ratio approach
+    // this replaced couldn't tell apart from a spacious open cave chamber.
+    private static String getLocation(Level level, BlockPos pos, String entityName) {
+        LocationDebug debug = new LocationDebug();
+        debug.entityName = entityName;
+        debug.level = level;
+        debug.pos = pos;
+
+        boolean sky = level.canSeeSky(pos);
+        debug.steps.add("canSeeSky(" + pos.toShortString() + ") = " + sky);
+        if (sky) {
+            debug.result = "Outdoors";
+            lastLocationDebug = debug;
+            return "Outdoors";
+        }
+
+        debug.steps.add("Entity Y = " + pos.getY());
+        if (pos.getY() < 50) {
+            debug.steps.add("Y < 50 -> instant Cave");
+            debug.result = "Cave";
+            lastLocationDebug = debug;
+            return "Cave";
+        }
+        debug.steps.add("Y >= 50, not an instant Cave");
+
+        int maxY = level.getMaxBuildHeight() - 1;
+        int y = pos.getY() + 1;
+        while (y <= maxY && level.getBlockState(new BlockPos(pos.getX(), y, pos.getZ())).isAir()) {
+            y++;
+        }
+        int ceilingStart = y;
+        int headroom = ceilingStart - (pos.getY() + 1);
+        debug.steps.add("First solid block above entity at Y=" + ceilingStart + " (headroom = " + headroom + " air blocks)");
+
+        int thickness = 0;
+        while (y <= maxY && !level.getBlockState(new BlockPos(pos.getX(), y, pos.getZ())).isAir()) {
+            thickness++;
+            y++;
+        }
+        debug.steps.add("Ceiling thickness (consecutive solid blocks starting at Y=" + ceilingStart + ") = " + thickness);
+
+        String result = thickness <= 3 ? "Indoors" : "Cave";
+        debug.steps.add("Thickness " + thickness + (thickness <= 3 ? " <= " : " > ") + "3 threshold -> " + result);
+        debug.result = result;
+        lastLocationDebug = debug;
+        return result;
+    }
+
+    // Retired air-ratio algorithm, kept only so "/aichat location" can still show a side-by-side
+    // comparison against the ceiling-thickness approach that replaced it above.
+    public static LocationDebug getLocationAirRatioDebug(Level level, BlockPos pos, String entityName) {
+        LocationDebug debug = new LocationDebug();
+        debug.entityName = entityName;
+        debug.level = level;
+        debug.pos = pos;
+
+        boolean sky = level.canSeeSky(pos);
+        debug.steps.add("canSeeSky(" + pos.toShortString() + ") = " + sky);
+        if (sky) {
+            debug.result = "Outdoors";
+            return debug;
+        }
+
+        debug.steps.add("Entity Y = " + pos.getY());
+        if (pos.getY() < 50) {
+            debug.steps.add("Y < 50 -> instant Cave");
+            debug.result = "Cave";
+            return debug;
+        }
+        debug.steps.add("Y >= 50, not an instant Cave");
+
+        int surfaceY = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING, pos).getY();
+        int depth = surfaceY - pos.getY();
+        debug.steps.add("Heightmap Surface Y (MOTION_BLOCKING) = " + surfaceY);
+        debug.steps.add("Depth = surfaceY - entityY = " + depth);
+
+        if (depth < 5) {
+            debug.steps.add("Depth < 5 -> Indoors");
+            debug.result = "Indoors";
+            return debug;
+        }
+        debug.steps.add("Depth >= 5, proceeding to air-ratio check");
+
+        int airBlocks = 0;
+        for (int y = pos.getY() + 1; y <= surfaceY; y++) {
+            if (level.getBlockState(new BlockPos(pos.getX(), y, pos.getZ())).isAir()) airBlocks++;
+        }
+        float airFraction = (float) airBlocks / depth;
+        debug.steps.add("Air blocks = " + airBlocks + " / " + depth + " = " + String.format("%.1f%%", airFraction * 100));
+
+        String result = airFraction > 0.75f ? "Indoors" : "Cave";
+        debug.steps.add(String.format("%.1f%% %s 75%% threshold -> %s", airFraction * 100, airFraction > 0.75f ? ">" : "<=", result));
+        debug.result = result;
+        return debug;
     }
 
     // Renders the NBT that IdentityHandler.generateWorldKnowledge computed server-side (home

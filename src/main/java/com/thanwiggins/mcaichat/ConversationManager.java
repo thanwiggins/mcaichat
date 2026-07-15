@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
@@ -99,8 +100,9 @@ public class ConversationManager {
             boolean timeout = (currentTick - lastMessageTick) > 1200; // 60 seconds of silence ends the conversation
             boolean tooFar = mc.player.distanceToSqr(activeEntity) > 256; // 16 blocks
             boolean deadOrRemoved = !activeEntity.isAlive() || activeEntity.isRemoved();
+            boolean fellAsleep = activeEntity instanceof LivingEntity le && le.isSleeping();
 
-            if (timeout || tooFar || deadOrRemoved) {
+            if (timeout || tooFar || deadOrRemoved || fellAsleep) {
                 endConversation(currentTick);
             }
         }
@@ -114,6 +116,7 @@ public class ConversationManager {
             List<Entity> nearby = mc.level.getEntities(mc.player, box, e ->
                 Config.isWhitelisted(e) && !Config.isBlacklisted(e) &&
                 !e.isInvisible() && // an invisible NPC shouldn't give away its position by speaking up
+                !(e instanceof LivingEntity le && le.isSleeping()) && // asleep in bed - can't strike up a conversation
                 (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 2400) && // 2 minute per-NPC cooldown
                 mc.player.hasLineOfSight(e)
             );

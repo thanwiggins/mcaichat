@@ -69,6 +69,54 @@ public class AIChatCommand {
                     })
                 )
 
+                // --- LOCATION DEBUG COMMAND ---
+                .then(Commands.literal("location")
+                    .executes(context -> {
+                        PromptBuilder.LocationDebug current = PromptBuilder.lastLocationDebug;
+                        if (current.level == null) {
+                            context.getSource().sendSystemMessage(Component.literal(
+                                "§cNo location check has run yet - talk to or greet an NPC first."
+                            ));
+                            return 0;
+                        }
+
+                        // Re-run the retired algorithm against the exact same level/pos the
+                        // real check last used, so the two traces line up on the same spot.
+                        PromptBuilder.LocationDebug retired = PromptBuilder.getLocationAirRatioDebug(
+                                current.level, current.pos, current.entityName);
+
+                        System.out.println("====== AI CHAT LOCATION DEBUG (" + current.entityName + ") ======");
+                        System.out.println("--- CURRENT ALGORITHM (ceiling thickness) ---");
+                        current.steps.forEach(System.out::println);
+                        System.out.println("Result: " + current.result);
+                        System.out.println("--- RETIRED ALGORITHM (air ratio) ---");
+                        retired.steps.forEach(System.out::println);
+                        System.out.println("Result: " + retired.result);
+                        System.out.println("=================================================");
+
+                        context.getSource().sendSystemMessage(Component.literal("§e--- LOCATION DEBUG (" + current.entityName + ") ---"));
+                        context.getSource().sendSystemMessage(Component.literal("§b[Current: ceiling thickness]"));
+                        for (String step : current.steps) {
+                            context.getSource().sendSystemMessage(Component.literal("§7- " + step));
+                        }
+                        context.getSource().sendSystemMessage(Component.literal("§aResult: " + current.result));
+
+                        context.getSource().sendSystemMessage(Component.literal("§d[Retired: air ratio]"));
+                        for (String step : retired.steps) {
+                            context.getSource().sendSystemMessage(Component.literal("§7- " + step));
+                        }
+                        context.getSource().sendSystemMessage(Component.literal("§aResult: " + retired.result));
+
+                        if (!current.result.equals(retired.result)) {
+                            context.getSource().sendSystemMessage(Component.literal("§6The two algorithms disagree for this position."));
+                        }
+
+                        context.getSource().sendSystemMessage(Component.literal("§7(Check your game console/logs to see the cleanly formatted version)"));
+
+                        return 1;
+                    })
+                )
+
                 // --- FIND ROOST DEBUG COMMAND ---
                 .then(Commands.literal("findroost")
                     .executes(context -> {
