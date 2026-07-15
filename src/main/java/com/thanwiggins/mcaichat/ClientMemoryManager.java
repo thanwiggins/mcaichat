@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-// Persists a rolling one-paragraph memory summary per NPC to disk (one JSON file per world),
+// Persists a growing bullet-point memory dossier per NPC to disk (one JSON file per world),
 // so an NPC still remembers past conversations after the player logs out and back in.
 public class ClientMemoryManager {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();

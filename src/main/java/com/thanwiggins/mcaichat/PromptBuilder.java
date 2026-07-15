@@ -349,7 +349,9 @@ public class PromptBuilder {
         String timeElapsedStr = "N/A";
 
         if (mem != null) {
-            memoryStr = mem.summary;
+            // A stored entry with an empty summary means you've spoken before but the conversation(s)
+            // were too short to have produced any memory items yet.
+            memoryStr = mem.summary.isEmpty() ? "None yet (spoken before, but nothing notable to remember)" : mem.summary;
 
             // Measured in game ticks rather than real time, so "how long ago" reflects time spent
             // in-world rather than counting time while the game was closed.
@@ -413,13 +415,13 @@ public class PromptBuilder {
     private static String buildExigentCircumstances(Level level, Player player, Entity target) {
         StringBuilder exigent = new StringBuilder();
 
-        if (player.getHealth() <= 6.0f) exigent.append("The player is severely injured. "); // 3 hearts or less
-        if (player.getFoodData().getFoodLevel() <= 6) exigent.append("The player is starving. "); // 3 drumsticks or less
+        if (player.getHealth() <= 6.0f) exigent.append("ALERT! The player is severely injured. "); // 3 hearts or less
+        if (player.getFoodData().getFoodLevel() <= 6) exigent.append("ALERT! The player is starving. "); // 3 drumsticks or less
 
         for (MobEffectInstance effect : player.getActiveEffects()) {
             if (!Config.isNarrativeEffect(effect)) continue;
             String effectName = effect.getEffect().getDisplayName().getString();
-            exigent.append("The player has a '").append(effectName).append("' status effect. ");
+            exigent.append("NOTE: The player has a '").append(effectName).append("' status effect. ");
         }
 
         // Brute-force block scan for nearby fire - expensive (a 33x33x33 cube), but this only
@@ -443,7 +445,7 @@ public class PromptBuilder {
         }
         
         if (fireFound) {
-            exigent.append("A dangerous fire is burning nearby! ");
+            exigent.append("ALERT! A dangerous fire is burning nearby! ");
         }
         
         AABB dangerBox = target.getBoundingBox().inflate(16.0D);
@@ -500,24 +502,24 @@ public class PromptBuilder {
 
         if (!hostileNames.isEmpty()) {
             String joinedHostiles = String.join(", ", hostileNames);
-            exigent.append("There are dangerous monsters nearby (").append(joinedHostiles).append(")! ");
+            exigent.append("ALERT! There are dangerous monsters nearby (").append(joinedHostiles).append(")! ");
         }
 
         if (!creatureNames.isEmpty()) {
             String joinedCreatures = String.join(", ", creatureNames);
-            exigent.append("There are creatures roaming nearby (").append(joinedCreatures).append("). ");
+            exigent.append("NOTE: There are creatures roaming nearby (").append(joinedCreatures).append("). ");
         }
 
         if (!wildlifeNames.isEmpty()) {
             String joinedWildlife = String.join(", ", wildlifeNames);
-            exigent.append("There is ambient wildlife nearby (").append(joinedWildlife).append("). ");
+            exigent.append("NOTE: There is ambient wildlife nearby (").append(joinedWildlife).append("). ");
         }
         
         if (target instanceof LivingEntity livingTarget) {
             float currentHealth = livingTarget.getHealth();
             float maxHealth = livingTarget.getMaxHealth();
             if (currentHealth <= (maxHealth * 0.3f)) { // below 30% of max health
-                exigent.append("You are severely injured and near death. ");
+                exigent.append("CRITICAL ALERT! You are severely injured and near death. ");
             }
 
             // Read from the server-synced summary (see SyncNPCPacket) rather than
@@ -526,7 +528,7 @@ public class PromptBuilder {
             String effectsInfo = target.getPersistentData().getString("mcaichat_effects");
             if (!effectsInfo.isEmpty()) {
                 for (String effectName : effectsInfo.split(",")) {
-                    exigent.append("You currently have a '").append(effectName).append("' status effect. ");
+                    exigent.append("NOTE: You currently have a '").append(effectName).append("' status effect. ");
                 }
             }
         }

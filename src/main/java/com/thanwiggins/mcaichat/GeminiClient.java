@@ -92,12 +92,21 @@ public class GeminiClient {
         sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode, onReplyReceived);
     }
 
-    // Called once a conversation ends: asks Gemini to fold the just-finished conversation into the
-    // NPC's existing memory (rather than replacing it), so old facts survive across many conversations.
+    // Called once a conversation ends: asks Gemini to list only the NEW memory items worth keeping
+    // from the just-finished conversation, which get appended to the NPC's existing dossier below
+    // (rather than asking the model to rewrite the whole thing), so old facts can't be dropped.
     public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick) {
         CompletableFuture.runAsync(() -> {
             try {
                 ClientMemoryManager.EntityMemory oldMem = ClientMemoryManager.getMemory(entity.getUUID());
+
+                // Conversations this short are unlikely to contain anything worth remembering -
+                // skip the API call, but still record that a conversation happened just now.
+                if (historyArray.size() <= 4) {
+                    ClientMemoryManager.updateMemory(entity.getUUID(), oldMem != null ? oldMem.summary : "", currentTick);
+                    return;
+                }
+
                 String memoryContext = oldMem != null ? oldMem.summary : "No prior memories.";
 
                 StringBuilder rawHistory = new StringBuilder();
@@ -110,13 +119,16 @@ public class GeminiClient {
 
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
-                // Explicitly instructed to merge rather than replace, otherwise the model tends to
-                // drop older facts that weren't mentioned again in the most recent conversation.
-                String prompt = "You are updating your memory dossier on your interactions the player. Below is your 'Previous Memory' and the 'Recent Conversation'. "
-                              + "Write a new, comprehensive memory summary (3-4 sentences) that retains all important historical details (like the player's name, past events, past attitudes, etc.) "
-                              + "AND integrates any new things learned from the recent conversation. DO NOT drop important past facts just because they weren't mentioned in the recent conversation.\n\n"
-                              + "Previous Memory: " + memoryContext + "\n\n"
-                              + "Recent Conversation:\n" + rawHistory.toString();
+                // Asks for only the new/changed items (as a bulleted list) instead of a full rewrite,
+                // so restating unchanged facts/feelings can't crowd out or drift from older memories.
+                String prompt = "You are updating the memory dossier of a Minecraft RPG Fantasy Adventure character after an interaction with the player. Below is your existing memory and a log of the most recent conversation. Follow the instructions followed by TASK: at the end of this message.\n\n"
+                              + "Previous Memory:\n" + memoryContext + "\n\n"
+                              + "Recent Conversation:\n" + rawHistory.toString() + "\n\n"
+                              + "Tips for Identifying Memories:\n"
+                              + "- Include tangible facts and anything the character learns during the conversation, but do NOT include notes about conversational asides, such as references to creatures.\n"
+                              + "- Include events that have shaped the character's connection to the player and how they view the player, but do NOT include general statements about their rapport with the player that lack storytelling value or present no change from past feelings.\n"
+                              + "- Do NOT include memory items if they repeat or reaffirm something or state that the character remains feeling a certain way about the player.\n\n"
+                              + "TASK: Review your previous memory and the recent conversation the character just had with the player. List any important new memory items that should be added to the character's memory dossier. If the recent conversation contained no useful information or new memories, return ''. Use a second person perspective when referring to the character. Do not title the list. List all items with a * prefix.";
 
                 JsonObject body = new JsonObject();
                 JsonObject textPart = new JsonObject();
@@ -140,15 +152,25 @@ public class GeminiClient {
 
                 if (response.statusCode() == 200) {
                     JsonObject jsonResponse = JsonParser.parseString(response.body()).getAsJsonObject();
-                    String summary = jsonResponse.getAsJsonArray("candidates")
+                    String newItems = jsonResponse.getAsJsonArray("candidates")
                             .get(0).getAsJsonObject()
                             .getAsJsonObject("content")
                             .getAsJsonArray("parts")
                             .get(0).getAsJsonObject()
                             .get("text").getAsString().trim();
 
-                    // Save the memory tagged with the tick the conversation ended
-                    ClientMemoryManager.updateMemory(entity.getUUID(), summary, currentTick);
+                    // The model returns '' (per the prompt's TASK instructions) when nothing in the
+                    // conversation was worth remembering - leave the dossier untouched in that case.
+                    boolean hasNewItems = !newItems.isEmpty() && !newItems.equals("''");
+
+                    if (hasNewItems) {
+                        String updatedMemory = oldMem != null ? oldMem.summary + "\n" + newItems : newItems;
+                        ClientMemoryManager.updateMemory(entity.getUUID(), updatedMemory, currentTick);
+                    } else if (oldMem != null) {
+                        // Still bump the tick so "time since last conversation" reflects that this
+                        // chat happened, even though nothing new was added to the dossier.
+                        ClientMemoryManager.updateMemory(entity.getUUID(), oldMem.summary, currentTick);
+                    }
                 }
             } catch (Exception e) {
                 System.err.println("[MC-AI Chat] Memory summarization failed: " + e.getMessage());
@@ -163,9 +185,10 @@ public class GeminiClient {
             try {
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 
-                String prompt = "You are a worldbuilding assistant for Minecraft. Generate a 2-3 sentence historical background or lore for a " 
+                String prompt = "You are a worldbuilding assistant for a Minecraft RPG fantasy adventure. Generate a simple paragraph of historical background or lore for a "
                         + category + " structure of type '" + structureType + "' named '" + structureName + "', located in a " + biome + " biome. "
-                        + "Make it fit naturally into a fantasy Minecraft world. Do not use markdown or formatting, just plain text.";
+                        + "Provide a few interesting facts about the location, but do not refer to or name surrounding land features, cities, or citizens since you have no context for those. "
+                        + "Do not use markdown or special formatting in your response.";
 
                 if (ClientLoreManager.debugLore) {
                     Minecraft.getInstance().execute(() -> {
