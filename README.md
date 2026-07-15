@@ -16,6 +16,10 @@ right now.
   civilizations, biome, time of day, weather, nearby danger, and more.
 - **NPCs can start conversations too** - entities occasionally speak up on their own when the player
   is nearby, instead of only responding when spoken to.
+- **Location awareness** - conversations account for whether the entity is outdoors, indoors, or in
+  a cave, adjusting which ambient details (biome, time, weather, season) are shared accordingly.
+- **Sleeping entities can't be chatted with** - an entity lying in a bed won't respond to chat or
+  strike up a conversation, and an in-progress conversation ends if the entity falls asleep.
 - **Generated lore** - the first time a "civilization" structure is discovered, Gemini writes a short
   history for it, cached forever after.
 - **Social circles** - entities sharing a home know about each other, including if one has died.
@@ -49,6 +53,7 @@ instead of global chat.
 | `/aichat debug` | Prints the most recent system prompt and message sent to Gemini. |
 | `/aichat lore` | Toggles debug output for structure lore generation. |
 | `/aichat init` | Toggles debug output for NPC-initiated conversations. |
+| `/aichat location` | Shows the outdoors/indoors/cave determination for the last-checked entity, comparing the current and a retired algorithm side by side. |
 | `/aichat findroost` | Lists nearby Ice and Fire dragon roosts (singleplayer/LAN only). |
 
 ## Configuration
