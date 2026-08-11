@@ -41,6 +41,12 @@ public class ChattingGoal extends Goal {
             // "conversation ended" packet - e.g. a crash or disconnect - so the entity doesn't
             // stand frozen facing an empty spot forever.
             if (player != null && player.isAlive() && this.mob.distanceToSqr(player) < 2500.0D) {
+                // Aggressive-by-nature mobs (see Config.isHostileToPlayer - a vanilla monster, or
+                // an enemy-faction Valarian Conquest soldier) shouldn't calmly freeze and hold eye
+                // contact just because a conversation is technically active. mob.getTarget() alone
+                // only catches this once a fight has actually started, not before.
+                if (Config.isHostileToPlayer(player, this.mob)) return false;
+
                 this.chattingPlayer = player;
                 return true;
             }

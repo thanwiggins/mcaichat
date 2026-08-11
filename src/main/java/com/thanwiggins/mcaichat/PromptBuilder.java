@@ -302,17 +302,31 @@ public class PromptBuilder {
         // IdentityHandler always writes "none" (never leaves this truly empty) when nothing
         // claimed a home, so both cases have to be checked - isEmpty() alone never catches it.
         if (!homeId.isEmpty() && !homeId.equals("none")) {
-            String homeType = formatName(data.getString("mcaichat_home_type"));
-            ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
-            String homeName = (homeLore != null) ? homeLore.name : homeType;
+            String rawHomeType = data.getString("mcaichat_home_type");
 
-            // Let the NPC know when the player is standing in its home right now
-            if (homeId.equals(ClientLoreManager.currentStructureId)) {
-                homeName += " (here)";
+            if (rawHomeType.equals("player_created")) {
+                // Player-created locations fold their (always-visible) description straight into
+                // the name/placeholder reference, rather than a separate "Local Lore/History" line -
+                // there's no separate history to generate, just the player's own description.
+                ClientLocationManager.LocationInfo info = ClientLocationManager.get(homeId);
+                String homeName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
+                if (homeId.equals(ClientLoreManager.currentStructureId)) {
+                    homeName += " (here)";
+                }
+                String description = (info != null) ? info.description : "";
+
+                knowledge += "Home: " + homeName + (description.isEmpty() ? "" : " (" + description + ")") + "\n";
+            } else {
+                String homeType = formatName(rawHomeType);
+                ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
+                String homeName = (homeLore != null) ? homeLore.name : homeType;
+                if (homeId.equals(ClientLoreManager.currentStructureId)) {
+                    homeName += " (here)";
+                }
+                String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
+
+                knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
             }
-
-            String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
-            knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
         } else {
             knowledge += "Home: None (Nomad)\n";
         }
@@ -326,27 +340,38 @@ public class PromptBuilder {
                 String[] parts = civList.getString(i).split("\\|");
                 if (parts.length == 5) {
                     String civId = parts[0];
-                    String civType = formatName(parts[1]);
+                    String rawCivType = parts[1];
+                    String civType = formatName(rawCivType);
                     String civBiome = formatName(parts[2]);
                     int civX = Integer.parseInt(parts[3]);
                     int civZ = Integer.parseInt(parts[4]);
-                    
-                    if (civId.equals(homeId)) continue;
-                    
-                    ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
-                    String civName = (civLore != null) ? civLore.name : civType;
 
-                    // Clarify with the raw structure type when it was given a custom/generated name,
-                    // e.g. "Oakhaven (Village)" instead of just "Oakhaven"
-                    if (civLore != null && !civLore.name.equals(civType)) {
-                        civName += " (" + civType + ")";
+                    if (civId.equals(homeId)) continue;
+
+                    String civName;
+                    String civDescription = "";
+                    if (rawCivType.equals("player_created")) {
+                        ClientLocationManager.LocationInfo info = ClientLocationManager.get(civId);
+                        civName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
+                        civDescription = (info != null) ? info.description : "";
+                    } else {
+                        ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
+                        civName = (civLore != null) ? civLore.name : civType;
+
+                        // Clarify with the raw structure type when it was given a custom/generated name,
+                        // e.g. "Oakhaven (Village)" instead of just "Oakhaven"
+                        if (civLore != null && !civLore.name.equals(civType)) {
+                            civName += " (" + civType + ")";
+                        }
                     }
-                    
+
                     String direction = getDirection(pos.getX(), pos.getZ(), civX, civZ);
                     double dist = Math.sqrt(Math.pow(pos.getX() - civX, 2) + Math.pow(pos.getZ() - civZ, 2));
                     String relativeDistance = getRelativeDistance(dist);
 
-                    civsBuilder.append("- ").append(civName).append(" located ").append(relativeDistance).append(" to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
+                    civsBuilder.append("- ").append(civName);
+                    if (!civDescription.isEmpty()) civsBuilder.append(" (").append(civDescription).append(")");
+                    civsBuilder.append(" located ").append(relativeDistance).append(" to the ").append(direction).append(" in a ").append(civBiome).append(" biome.\n");
                 }
             }
 
@@ -391,28 +416,16 @@ public class PromptBuilder {
     
     // Nameplate/chat color reflecting how this entity feels about the player - monster
     // hostility by default, or faction standing for Valarian Conquest's faction-aware units.
+    // Delegates to Config - the canonical version, since DirectiveGoal (server-side) also needs
+    // this exact check and can't safely depend on this client-heavy class.
     public static String getSentimentColorCode(Player player, Entity target) {
-        String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        boolean isMonster = target instanceof Monster;
-        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
-
-        if (isValarianFighter && target.getTeam() != null) {
-            if (target.isAlliedTo(player)) {
-                return "§a"; // Green (Friendly/Allied)
-            } else if (player.getTeam() != null) {
-                return "§c"; // Red (Hostile/Enemy Faction)
-            } else {
-                return "§e"; // Yellow (Suspicious/Unaligned)
-            }
-        }
-        
-        return isMonster ? "§c" : "§a"; // Red for monsters, Green for normal friendly entities
+        return Config.getSentimentColorCode(player, target);
     }
 
     // Simple friendly/hostile split for callers that just need a boolean (e.g. conversation-initiation
     // odds), collapsing getSentimentColorCode's "Suspicious/Unaligned" (yellow) case into friendly.
     public static boolean isHostileToPlayer(Player player, Entity target) {
-        return getSentimentColorCode(player, target).equals("§c");
+        return Config.isHostileToPlayer(player, target);
     }
 
     // The NPC's own identity: name, entity type, personality, sentiment toward the player,

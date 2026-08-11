@@ -13,6 +13,7 @@ public class Config {
     public static final ForgeConfigSpec.ConfigValue<String> WHITELIST_ENTITIES;
     public static final ForgeConfigSpec.ConfigValue<String> BLACKLIST_ENTITIES;
     public static final ForgeConfigSpec.ConfigValue<String> WANDERER_ENTITIES;
+    public static final ForgeConfigSpec.IntValue HOME_RADIUS;
 
 
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_MONSTERS;
@@ -39,6 +40,9 @@ public class Config {
 
         WANDERER_ENTITIES = BUILDER.comment("Entities that are always treated as wanderers and never assigned a home structure, even if standing inside one - useful for entities like Wandering Traders that can spawn within a structure's bounds without actually being native to it.")
                          .define("wandererEntities", "minecraft:wandering_trader");
+
+        HOME_RADIUS = BUILDER.comment("Radius (in blocks) an NPC is biased to stay within once it's claimed a home. Doesn't stop them leaving outright, just penalizes wandering further out.")
+                         .defineInRange("homeRadius", 32, 1, Integer.MAX_VALUE);
 
         CUSTOM_MONSTERS = BUILDER.comment("Entities forced to be classified as monsters").define("customMonsters", "");
         CUSTOM_CREATURES = BUILDER.comment("Entities forced to be classified as creatures").define("customCreatures", "");
@@ -100,6 +104,34 @@ public class Config {
     // describe feeling. Amplifier 1 (e.g. from stepping on spikes) is a real gameplay effect and
     // is left alone.
     private static final int FAKE_SLOWNESS_AMPLIFIER_THRESHOLD = 200;
+
+    // Canonical "is this entity hostile toward this specific player" check - shared by
+    // PromptBuilder (which delegates its getSentimentColorCode/isHostileToPlayer here for the
+    // system-prompt "aggressive" tag) and DirectiveGoal (which uses it to refuse to carry out a
+    // /follow, /goto, or /stay directive). Kept here, not in PromptBuilder, since PromptBuilder
+    // pulls in client-only classes elsewhere and this needs to be safely callable from server-side
+    // AI code too.
+    public static String getSentimentColorCode(net.minecraft.world.entity.player.Player player, net.minecraft.world.entity.Entity target) {
+        String targetRegistryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
+        boolean isMonster = target instanceof net.minecraft.world.entity.monster.Monster;
+        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+
+        if (isValarianFighter && target.getTeam() != null) {
+            if (target.isAlliedTo(player)) {
+                return "§a"; // Green (Friendly/Allied)
+            } else if (player.getTeam() != null) {
+                return "§c"; // Red (Hostile/Enemy Faction)
+            } else {
+                return "§e"; // Yellow (Suspicious/Unaligned)
+            }
+        }
+
+        return isMonster ? "§c" : "§a"; // Red for monsters, Green for normal friendly entities
+    }
+
+    public static boolean isHostileToPlayer(net.minecraft.world.entity.player.Player player, net.minecraft.world.entity.Entity target) {
+        return getSentimentColorCode(player, target).equals("§c");
+    }
 
     public static boolean isNarrativeEffect(net.minecraft.world.effect.MobEffectInstance effect) {
         net.minecraft.world.effect.MobEffect mobEffect = effect.getEffect();

@@ -1,7 +1,11 @@
 package com.thanwiggins.mcaichat;
 
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public class NetworkHandler {
@@ -37,5 +41,34 @@ public class NetworkHandler {
                 NpcDeathPacket::encode,
                 NpcDeathPacket::new,
                 NpcDeathPacket::handle);
+
+        INSTANCE.registerMessage(id++, LocationSyncPacket.class,
+                LocationSyncPacket::encode,
+                LocationSyncPacket::new,
+                LocationSyncPacket::handle);
+
+        INSTANCE.registerMessage(id++, LocationRevealPacket.class,
+                LocationRevealPacket::encode,
+                LocationRevealPacket::new,
+                LocationRevealPacket::handle);
+
+        INSTANCE.registerMessage(id++, TriggerChatPacket.class,
+                TriggerChatPacket::encode,
+                TriggerChatPacket::new,
+                TriggerChatPacket::handle);
+
+        INSTANCE.registerMessage(id++, GoToPacket.class,
+                GoToPacket::encode,
+                GoToPacket::new,
+                GoToPacket::handle);
+    }
+
+    public static void broadcastLocations(ServerLevel level) {
+        INSTANCE.send(PacketDistributor.ALL.noArg(), new LocationSyncPacket(PlayerLocationData.get(level).save(new CompoundTag())));
+    }
+
+    public static void sendLocationsTo(ServerPlayer player) {
+        INSTANCE.send(PacketDistributor.PLAYER.with(() -> player),
+                new LocationSyncPacket(PlayerLocationData.get(player.serverLevel()).save(new CompoundTag())));
     }
 }

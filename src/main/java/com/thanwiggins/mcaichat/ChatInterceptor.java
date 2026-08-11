@@ -1,6 +1,8 @@
 package com.thanwiggins.mcaichat;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -13,6 +15,7 @@ import net.minecraftforge.client.event.ClientChatEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.ArrayList;
 import java.util.List;
 
 // Cancels vanilla chat messages and reroutes them to whichever whitelisted entity the
@@ -37,12 +40,6 @@ public class ChatInterceptor {
         if (player == null || mc.level == null) return;
         mc.gui.getChat().addRecentChat(message);
 
-        String apiKey = Config.API_KEY.get();
-        if (apiKey == null || apiKey.isEmpty()) {
-            player.sendSystemMessage(Component.literal("§c[Error] Gemini API Key is missing! Click 'Mods' in the menu to configure it."));
-            return;
-        }
-
         Entity targetEntity = getTargetEntity(mc, player);
 
         if (targetEntity == null) {
@@ -50,7 +47,24 @@ public class ChatInterceptor {
             return;
         }
 
-        long currentTick = mc.level.getGameTime();
+        sendPlayerMessage(player, targetEntity, message);
+    }
+
+    // Runs the same pipeline onClientChat runs (echo, location-reveal check, conversation
+    // bookkeeping, system prompt, Gemini call) for a message that didn't come through real chat
+    // input - e.g. NpcDirectiveCommands routes its /follow, /goto, /stay, /resume messages through
+    // here (via TriggerChatPacket) so they read as, and actually are, the player talking to the
+    // NPC rather than a scripted acknowledgement line.
+    public static void sendPlayerMessage(Player player, Entity targetEntity, String message) {
+        String apiKey = Config.API_KEY.get();
+        if (apiKey == null || apiKey.isEmpty()) {
+            player.sendSystemMessage(Component.literal("§c[Error] Gemini API Key is missing! Click 'Mods' in the menu to configure it."));
+            return;
+        }
+
+        checkForLocationReveal(targetEntity, message);
+
+        long currentTick = targetEntity.level().getGameTime();
 
         if (ConversationManager.activeEntity != null && !ConversationManager.activeEntity.getUUID().equals(targetEntity.getUUID())) {
             ConversationManager.endConversation(currentTick);
@@ -60,10 +74,10 @@ public class ChatInterceptor {
         }
 
         String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
-        if (entityName.isEmpty()) entityName = targetEntity.getDisplayName().getString(); 
-        
+        if (entityName.isEmpty()) entityName = targetEntity.getDisplayName().getString();
+
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
-        
+
         String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity, false);
         lastSystemPrompt = systemPrompt;
         lastUserMessage = message;
@@ -75,7 +89,43 @@ public class ChatInterceptor {
         GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode);
     }
 
-    private static Entity getTargetEntity(Minecraft mc, Player player) {
+    // If the player just said a player-created location's real name to an NPC that knows about it
+    // (and that NPC's civilization hasn't already learned it), tell the server so it can reveal
+    // that name to every NPC sharing this NPC's home - not just this one. Only checks what this
+    // specific NPC knows about (its own home, plus its nearby_civs list) - same "no broader
+    // search" scoping /goto's named-location lookup already uses.
+    private static void checkForLocationReveal(Entity targetEntity, String message) {
+        CompoundTag data = targetEntity.getPersistentData();
+        String homeId = data.getString("mcaichat_home_id");
+        String lowerMessage = message.toLowerCase();
+
+        List<String> candidateIds = new ArrayList<>();
+        if (data.getString("mcaichat_home_type").equals("player_created")) {
+            candidateIds.add(homeId);
+        }
+        if (data.contains("mcaichat_nearby_civs", 9)) {
+            ListTag civList = data.getList("mcaichat_nearby_civs", 8);
+            for (int i = 0; i < civList.size(); i++) {
+                String[] parts = civList.getString(i).split("\\|");
+                if (parts.length == 5 && parts[1].equals("player_created")) {
+                    candidateIds.add(parts[0]);
+                }
+            }
+        }
+
+        for (String locationId : candidateIds) {
+            ClientLocationManager.LocationInfo info = ClientLocationManager.get(locationId);
+            if (info == null || info.revealedHomeIds.contains(homeId)) continue;
+
+            if (lowerMessage.contains(info.name.toLowerCase())) {
+                NetworkHandler.INSTANCE.sendToServer(new LocationRevealPacket(locationId, homeId));
+            }
+        }
+    }
+
+    // Package-visible (not private) - GotoCommand reuses this for the same crosshair-first,
+    // else-nearest-with-line-of-sight targeting UX, rather than duplicating it.
+    static Entity getTargetEntity(Minecraft mc, Player player) {
         HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();
