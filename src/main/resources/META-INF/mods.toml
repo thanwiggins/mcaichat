@@ -7,7 +7,6 @@ modId="mcaichat"
 version="${mod_version}"
 displayName="MC-AI Chat"
 displayURL="https://github.com/thanwiggins/mcaichat"
-logoFile="logo.png"
 authors="ThanWiggins"
 description='''${mod_description}'''
 
