@@ -76,3 +76,8 @@ Creature config's special instructions field for per-entity-type customization i
 ```
 
 The output jar is written to `build/libs/`.
+
+## License
+
+Licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) - share, modify, and
+redistribute freely, including commercially, as long as you credit ThanWiggins.
