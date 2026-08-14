@@ -163,7 +163,8 @@ public class PlayerLocationCommands {
             return 0;
         }
 
-        String finalDescription = description + " Formerly known as a " + target.structureType().replace("_", " ") + ".";
+        String descriptionEnd = description.endsWith(".") ? "" : ".";
+        String finalDescription = description + descriptionEnd + " Formerly known as a " + target.structureType().replace("_", " ") + ".";
         PlayerLocationData.Location location = data.create(name, finalDescription, player.getUUID(), pos);
         migrateResidents(level, pos, target.homeId(), location);
         IdentityHandler.forgetOldLocation(level, pos, target.homeId());
