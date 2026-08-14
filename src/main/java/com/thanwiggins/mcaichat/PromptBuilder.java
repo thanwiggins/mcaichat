@@ -390,7 +390,7 @@ public class PromptBuilder {
                 ClientLocationManager.LocationInfo info = ClientLocationManager.get(homeId);
                 String homeName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
                 homeName += homeSuffix;
-                String description = withFormerLore((info != null) ? info.description : "", info);
+                String description = (info != null) ? info.description : "";
 
                 knowledge += "Home: " + homeName + (description.isEmpty() ? "" : " (" + description + ")") + "\n";
             } else {
@@ -428,7 +428,7 @@ public class PromptBuilder {
                     if (rawCivType.equals("player_created")) {
                         ClientLocationManager.LocationInfo info = ClientLocationManager.get(civId);
                         civName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
-                        civDescription = withFormerLore((info != null) ? info.description : "", info);
+                        civDescription = (info != null) ? info.description : "";
                     } else {
                         ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
                         civName = (civLore != null) ? civLore.name : civType;
@@ -469,20 +469,6 @@ public class PromptBuilder {
         }
         
         return knowledge.trim();
-    }
-
-    // Splices a claimed location's original structure lore back onto its description, so
-    // /base claim doesn't erase the history that had already been generated for that spot before
-    // a player took it over. Best-effort: lore is generated and cached per-client (see
-    // ClientLoreManager), so this only surfaces if this specific client already generated it -
-    // same as any other lore lookup in this mod.
-    private static String withFormerLore(String description, ClientLocationManager.LocationInfo info) {
-        if (info == null || info.formerStructureId.isEmpty()) return description;
-
-        ClientLoreManager.StructureLore oldLore = ClientLoreManager.getLore(info.formerStructureId);
-        if (oldLore == null || oldLore.background == null || oldLore.background.isEmpty()) return description;
-
-        return description.isEmpty() ? oldLore.background : description + " " + oldLore.background;
     }
 
     // One-word-ish capability tag ("Warrior", "Merchant", etc.) reused by both the full prompt
@@ -527,13 +513,27 @@ public class PromptBuilder {
         boolean isMonster = target instanceof Monster;
         boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
         boolean isMerchant = target instanceof Merchant;
-        
+
         String shortCap = getShortCapabilityString(target);
         String capability = "Normal Citizen - No Fighting Abilities";
-        
+
         if (shortCap.equals("Warrior & Merchant")) capability = "Trained Warrior & Merchant - Has Fighting Abilities and trades items";
         else if (shortCap.equals("Warrior")) capability = "Trained Warrior - Has Fighting Abilities";
         else if (shortCap.equals("Merchant")) capability = "Merchant - Trades items with the player";
+
+        // Valarian Conquest citizens captured from a conquered settlement sit unclaimed
+        // ("claimed_citizen" absent/false, no team) until a player claims them - see
+        // ClaimCitizenProcedureProcedure in their mod. Overrides the normal capability line
+        // entirely while held; Trades Available below is unaffected either way, since released
+        // prisoners commonly take up a trading profession afterward.
+        boolean isValarianCitizen = targetRegistryName.equals("valarian_conquest:male_citizen") || targetRegistryName.equals("valarian_conquest:female_citizen");
+        if (isValarianCitizen) {
+            if (!data.getBoolean("claimed_citizen")) {
+                capability = "Prisoner - Held captive in this place";
+            } else {
+                capability = "Released Prisoner - Released from captivity in this place by " + resolveCitizenOwnerName(target, data) + ".";
+            }
+        }
 
         String sentiment = isMonster ? "Hostile toward the player (The player is a dangerous enemy that must be eliminated)" : "Friendly and welcoming toward the player";
 
@@ -584,8 +584,26 @@ public class PromptBuilder {
             }
         }
 
-        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s%s\nMemory: %s\nTime Since Last Conversation: %s", 
+        return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s%s\nMemory: %s\nTime Since Last Conversation: %s",
                 name, entityType, personality, sentiment, capability, tradingInfo, memoryStr, timeElapsedStr);
+    }
+
+    // Valarian Conquest stores the claiming player's UUID as a plain string ("citizen_owner"),
+    // not a UUID-typed tag like this mod's own mcaichat_directive_player - same "a player" fallback
+    // as buildDirectiveInstruction if the owner isn't online or this NPC hasn't been told their name.
+    private static String resolveCitizenOwnerName(Entity target, CompoundTag data) {
+        String ownerId = data.getString("citizen_owner");
+        if (!ownerId.isEmpty()) {
+            try {
+                Player owner = target.level().getPlayerByUUID(UUID.fromString(ownerId));
+                if (owner != null && knowsPlayerName(target, owner)) {
+                    return getPlayerDisplayName(owner);
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Malformed/unexpected UUID string - fall through to the generic fallback.
+            }
+        }
+        return "a player";
     }
 
     // The player's own line (if this NPC knows their name/description - see

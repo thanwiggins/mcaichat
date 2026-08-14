@@ -165,11 +165,8 @@ public class PlayerLocationCommands {
             return 0;
         }
 
-        String descriptionEnd = description.endsWith(".") ? "" : ".";
-        String finalDescription = description + descriptionEnd + " Formerly known as a " + target.structureType().replace("_", " ") + ".";
+        String finalDescription = buildClaimDescription(level, name, description, target);
         PlayerLocationData.Location location = data.create(name, finalDescription, player.getUUID(), pos);
-        location.formerStructureId = target.homeId();
-        data.setDirty();
         migrateResidents(level, pos, target.homeId(), location);
         IdentityHandler.forgetOldLocation(level, pos, target.homeId());
         IdentityHandler.considerNewLocation(level, location);
@@ -177,6 +174,35 @@ public class PlayerLocationCommands {
 
         player.sendSystemMessage(Component.literal("§aClaimed '" + name + "'."));
         return 1;
+    }
+
+    // Resolved once, permanently, at claim time - rather than a live per-render lookup - so it
+    // works identically for every player from the moment the location is broadcast, not just
+    // whichever client happened to have already generated that structure's lore themselves.
+    // A civilization structure has a real generated name (see StructureLoreData/ClientLoreManager's
+    // "civilization" category, the only one that calls NPCData.getRandomRealm rather than just
+    // reusing the formatted structure type) - for those, the old name is used directly ("Formerly
+    // known as Rhandain") and any mention of it in the old lore text is renamed to the new
+    // location's name, so the lore reads as continuous history rather than referencing a place
+    // that, as far as an NPC is concerned, no longer exists under that name.
+    private static String buildClaimDescription(ServerLevel level, String newName, String description, ClaimTarget target) {
+        String descriptionEnd = description.endsWith(".") ? "" : ".";
+        StructureLoreData.LoreEntry oldLore = StructureLoreData.get(level).get(target.homeId());
+
+        String formerlyKnownAs;
+        String oldBackground = (oldLore != null) ? oldLore.background() : null;
+
+        if (oldLore != null && "civilization".equals(oldLore.type()) && oldLore.name() != null && !oldLore.name().isEmpty()) {
+            formerlyKnownAs = "Formerly known as " + oldLore.name() + ".";
+            if (oldBackground != null && !oldBackground.isEmpty()) {
+                oldBackground = oldBackground.replace(oldLore.name(), newName);
+            }
+        } else {
+            formerlyKnownAs = "Formerly known as a " + target.structureType().replace("_", " ") + ".";
+        }
+
+        String loreSuffix = (oldBackground != null && !oldBackground.isEmpty()) ? " " + oldBackground : "";
+        return description + descriptionEnd + " " + formerlyKnownAs + loreSuffix;
     }
 
     // Same civ/nomad classification IdentityHandler uses when first assigning NPC homes, so a

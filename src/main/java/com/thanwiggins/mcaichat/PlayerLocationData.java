@@ -29,10 +29,6 @@ public class PlayerLocationData extends SavedData {
         public final UUID creator;
         public final BlockPos pos;
         public final Set<String> revealedHomeIds = new HashSet<>();
-        // Set only by /base claim - the structure id this location used to be, so PromptBuilder
-        // can splice that structure's already-generated lore (see ClientLoreManager) back into
-        // this location's description instead of losing it when the structure gets conquered.
-        public String formerStructureId = "";
 
         public Location(String name, String description, UUID creator, BlockPos pos) {
             this.name = name;
@@ -124,7 +120,6 @@ public class PlayerLocationData extends SavedData {
             entry.putInt("x", location.pos.getX());
             entry.putInt("y", location.pos.getY());
             entry.putInt("z", location.pos.getZ());
-            entry.putString("formerStructureId", location.formerStructureId);
 
             ListTag revealed = new ListTag();
             for (String homeId : location.revealedHomeIds) {
@@ -150,7 +145,6 @@ public class PlayerLocationData extends SavedData {
                     entry.getString("description"),
                     entry.getUUID("creator"),
                     new BlockPos(entry.getInt("x"), entry.getInt("y"), entry.getInt("z")));
-            location.formerStructureId = entry.getString("formerStructureId");
 
             ListTag revealed = entry.getList("revealedHomeIds", 8); // 8 = StringTag
             for (int j = 0; j < revealed.size(); j++) {

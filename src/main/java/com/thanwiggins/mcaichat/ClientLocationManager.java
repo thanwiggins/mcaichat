@@ -18,15 +18,11 @@ public class ClientLocationManager {
         public final String name;
         public final String description;
         public final Set<String> revealedHomeIds;
-        // Non-empty only for locations founded via /base claim - the structure id this location
-        // used to be, so PromptBuilder can look up that structure's already-generated lore.
-        public final String formerStructureId;
 
-        public LocationInfo(String name, String description, Set<String> revealedHomeIds, String formerStructureId) {
+        public LocationInfo(String name, String description, Set<String> revealedHomeIds) {
             this.name = name;
             this.description = description;
             this.revealedHomeIds = revealedHomeIds;
-            this.formerStructureId = formerStructureId;
         }
 
         // viewerHomeId is the NPC's own home_id - reveal state is scoped per-civilization,
@@ -46,7 +42,6 @@ public class ClientLocationManager {
             CompoundTag entry = list.getCompound(i);
             String name = entry.getString("name");
             String description = entry.getString("description");
-            String formerStructureId = entry.getString("formerStructureId");
 
             Set<String> revealed = new HashSet<>();
             ListTag revealedList = entry.getList("revealedHomeIds", 8); // 8 = StringTag
@@ -54,7 +49,7 @@ public class ClientLocationManager {
                 revealed.add(revealedList.getString(j));
             }
 
-            updated.put("player:" + name.toLowerCase(), new LocationInfo(name, description, revealed, formerStructureId));
+            updated.put("player:" + name.toLowerCase(), new LocationInfo(name, description, revealed));
         }
 
         locations = updated;
