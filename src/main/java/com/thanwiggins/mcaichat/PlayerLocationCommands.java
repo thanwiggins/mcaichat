@@ -166,6 +166,7 @@ public class PlayerLocationCommands {
         String finalDescription = description + " Formerly known as a " + target.structureType().replace("_", " ") + ".";
         PlayerLocationData.Location location = data.create(name, finalDescription, player.getUUID(), pos);
         migrateResidents(level, pos, target.homeId(), location);
+        IdentityHandler.forgetOldLocation(level, pos, target.homeId());
         IdentityHandler.considerNewLocation(level, location);
         NetworkHandler.broadcastLocations(level);
 

@@ -29,6 +29,7 @@ public class Config {
     public static final ForgeConfigSpec.ConfigValue<String> NOMAD_STRUCTURES;
     public static final ForgeConfigSpec.ConfigValue<String> ADVENTURE_STRUCTURES;
     public static final ForgeConfigSpec.ConfigValue<String> IGNORED_STRUCTURES;
+    public static final ForgeConfigSpec.IntValue MAX_PILLAGERS_PER_OUTPOST;
 
     static {
         BUILDER.push("Gemini API Settings");
@@ -66,6 +67,9 @@ public class Config {
         NOMAD_STRUCTURES = BUILDER.comment("Structures forced to be classified as nomadic camps (no lore)").define("nomadStructures", "");
         ADVENTURE_STRUCTURES = BUILDER.comment("Structures forced to be classified as adventure locations").define("adventureStructures", "");
         IGNORED_STRUCTURES = BUILDER.comment("Structures completely ignored by the AI").define("ignoredStructures", "");
+
+        MAX_PILLAGERS_PER_OUTPOST = BUILDER.comment("Lifetime cap on how many pillagers a single Pillager Outpost can ever naturally spawn - once reached, that outpost stops generating new ones permanently (patrols and raids are unaffected). Set to 0 to disable and allow unlimited vanilla respawning.")
+                         .defineInRange("maxPillagersPerOutpost", 12, 0, Integer.MAX_VALUE);
         BUILDER.pop();
 
         SPEC = BUILDER.build();

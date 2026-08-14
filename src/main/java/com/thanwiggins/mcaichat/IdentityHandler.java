@@ -254,6 +254,35 @@ public class IdentityHandler {
         return serverLevel.getBiome(pos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
     }
 
+    // Called right after /base claim re-tags a conquered structure's residents to their new
+    // player-created location (see PlayerLocationCommands.baseClaim/migrateResidents), so nearby
+    // NPCs stop listing the conquered structure's old id as a separate "nearby location" alongside
+    // its replacement - it's the same physical spot, not two. Residents' own mcaichat_home_id is
+    // already fixed up by migrateResidents by the time this runs; this only cleans up the
+    // nearby_civs side-list every nearby NPC (resident or not) may have cached a reference in.
+    public static void forgetOldLocation(ServerLevel serverLevel, BlockPos origin, String oldHomeId) {
+        AABB searchBox = new AABB(origin).inflate(CIV_SCAN_RADIUS_BLOCKS);
+        List<Entity> nearby = serverLevel.getEntities((Entity) null, searchBox, Config::isWhitelisted);
+
+        for (Entity entity : nearby) {
+            CompoundTag data = entity.getPersistentData();
+            if (!data.contains("mcaichat_nearby_civs", 9)) continue;
+
+            ListTag existing = data.getList("mcaichat_nearby_civs", 8);
+            ListTag filtered = new ListTag();
+            boolean changed = false;
+            for (int i = 0; i < existing.size(); i++) {
+                String civ = existing.getString(i);
+                if (civ.startsWith(oldHomeId + "|")) {
+                    changed = true;
+                    continue;
+                }
+                filtered.add(StringTag.valueOf(civ));
+            }
+            if (changed) data.put("mcaichat_nearby_civs", filtered);
+        }
+    }
+
     // Called right after /base new creates a location, so already-tagged nearby NPCs (whose
     // generateWorldKnowledge already ran, and will never run again) learn about it immediately,
     // instead of only NPCs first tagged after this point.

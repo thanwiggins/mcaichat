@@ -26,13 +26,17 @@ public class NameplateRenderer {
                                 
                 Player player = Minecraft.getInstance().player;
                 String colorCode = "§6"; // Default to gold if player is null
-                
+                boolean isHostile = false;
+
                 if (player != null) {
                     colorCode = PromptBuilder.getSentimentColorCode(player, entity);
+                    isHostile = PromptBuilder.isHostileToPlayer(player, entity);
                 }
 
-                // Permanently override the color code if they know a secret
-                if (data.contains("mcaichat_secret_type")) {
+                // Override the color code if they know a secret - but never on a hostile NPC,
+                // otherwise a monster that happens to know a secret would show as the "safe" blue
+                // instead of red, hiding the danger from the player at a glance.
+                if (data.contains("mcaichat_secret_type") && !isHostile) {
                     colorCode = "§b"; // Aqua/Blue color
                 }
                 
