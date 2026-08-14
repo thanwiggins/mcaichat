@@ -228,6 +228,7 @@ public class GeminiClient {
                             .get("text").getAsString().trim();
 
                     ClientLoreManager.updateLoreBackground(structureId, generatedLore);
+                    ClientLoreManager.reportToServer(structureId);
                     System.out.println("[MC-AI Chat] Generated new lore for " + structureName + "!");
 
                     if (ClientLoreManager.debugLore) {

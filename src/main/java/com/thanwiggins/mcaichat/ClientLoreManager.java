@@ -1,29 +1,22 @@
 package com.thanwiggins.mcaichat;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
-import net.minecraft.client.Minecraft;
-import net.minecraftforge.fml.loading.FMLPaths;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 
-// Persists a generated name/category/backstory per discovered structure to disk per world, and
-// decides whether a newly-entered structure is a civilization (worth a Gemini-written history),
-// a nomad camp (name only, no lore call), or a generic adventure location.
+// Client-side mirror of the server's StructureLoreData (kept fresh via LoreSyncPacket), and the
+// decision-maker for whether a newly-entered structure is a civilization (worth a Gemini-written
+// history), a nomad camp (name only, no lore call), or a generic adventure location. Lore is still
+// generated here using the discovering player's own Gemini key, but the result is reported to the
+// server (see reportToServer/LoreReportPacket) so it becomes the one shared answer for everyone,
+// rather than a per-client local cache - unlike ClientLocationManager's data, this used to be
+// cached to disk per world; that's gone now that the server is the source of truth.
 public class ClientLoreManager {
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final File LORE_DIR = FMLPaths.CONFIGDIR.get().resolve("mcaichat_lore").toFile();
-    
     private static Map<String, StructureLore> loreMap = new HashMap<>();
-    private static String currentWorldId = "default";
 
     // The structure/roost the player is currently standing in, used by PromptBuilder to tag
     // an NPC's home as "(here)" when the player and the NPC's home coincide.
@@ -45,66 +38,44 @@ public class ClientLoreManager {
         }
     }
 
-    public static void loadWorldLore() {
-        if (!LORE_DIR.exists()) LORE_DIR.mkdirs();
-        
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.getCurrentServer() != null) {
-            currentWorldId = "mp_" + mc.getCurrentServer().ip.replace(":", "_");
-        } else if (mc.getSingleplayerServer() != null) {
-            currentWorldId = "sp_" + mc.getSingleplayerServer().getWorldData().getLevelName().replaceAll("[^a-zA-Z0-9.-]", "_");
-        }
-
-        File loreFile = new File(LORE_DIR, currentWorldId + ".json");
-        if (loreFile.exists()) {
-            try (FileReader reader = new FileReader(loreFile)) {
-                Type type = new TypeToken<HashMap<String, StructureLore>>(){}.getType();
-                loreMap = GSON.fromJson(reader, type);
-                if (loreMap == null) loreMap = new HashMap<>();
-            } catch (Exception e) {
-                loreMap = new HashMap<>();
-            }
-        } else {
-            loreMap = new HashMap<>();
-        }
-    }
-
-    public static void saveWorldLore() {
-        if (!LORE_DIR.exists()) LORE_DIR.mkdirs();
-        File loreFile = new File(LORE_DIR, currentWorldId + ".json");
-        try (FileWriter writer = new FileWriter(loreFile)) {
-            GSON.toJson(loreMap, writer);
-        } catch (Exception e) {}
-    }
-
     public static StructureLore getLore(String structureId) {
         return loreMap.get(structureId);
     }
 
     public static void addLore(String structureId, String name, String background, String type, String fullKey) {
         loreMap.put(structureId, new StructureLore(name, background, type, fullKey));
-        saveWorldLore();
     }
-    
+
     public static void updateLoreBackground(String structureId, String background) {
         if (loreMap.containsKey(structureId)) {
             loreMap.get(structureId).background = background;
-            saveWorldLore();
         }
     }
 
-    // Deletes lore files for worlds that no longer show up in the singleplayer world list -
-    // called by WorldDataCleaner once that list (re)loads, since that's the only reliable moment
-    // we know a world was deleted.
-    public static void pruneDeletedWorlds(Set<String> existingWorldIds) {
-        File[] files = LORE_DIR.listFiles((dir, name) -> name.startsWith("sp_") && name.endsWith(".json"));
-        if (files == null) return;
+    // Sends this structure's current entry to the server as this client's report - called only
+    // once a structure's lore is actually final (nomad/adventure immediately, civilization once
+    // its Gemini call succeeds), never for the "Discovering the history..." placeholder or a
+    // failed-generation fallback, so a transient failure can't permanently lock in bad lore for
+    // everyone. The server only accepts the first report for a given structure (see
+    // StructureLoreData.addIfAbsent) - if another player already reported it first, this is a
+    // harmless no-op and the next LoreSyncPacket corrects this client's own copy to match.
+    public static void reportToServer(String structureId) {
+        StructureLore lore = loreMap.get(structureId);
+        if (lore == null) return;
 
-        for (File file : files) {
-            String worldId = file.getName().substring(0, file.getName().length() - ".json".length());
-            if (!existingWorldIds.contains(worldId)) {
-                file.delete();
-            }
+        NetworkHandler.INSTANCE.sendToServer(new LoreReportPacket(structureId, lore.name, lore.background, lore.type, lore.fullKey));
+    }
+
+    // Merges one or more server-reported entries (a full dump on login, or a single new entry
+    // whenever the server accepts a report) into this client's map. Always overwrites - the
+    // server is authoritative, so even if this client generated its own (different) placeholder
+    // for a structure, an incoming entry for that same id is the winning version.
+    public static void merge(CompoundTag data) {
+        ListTag list = data.getList("lore", 10); // 10 = CompoundTag
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            addLore(entry.getString("id"), entry.getString("name"), entry.getString("background"),
+                    entry.getString("type"), entry.getString("fullKey"));
         }
     }
 
@@ -128,8 +99,10 @@ public class ClientLoreManager {
 
         // Lore is generated once per structure and cached forever after - re-entering a
         // known structure should never re-roll its name/category or re-trigger a Gemini call.
+        // This also naturally skips generation entirely once the server has already synced this
+        // structure's lore in from another player - see LoreSyncPacket.
         if (loreMap.containsKey(structureId)) return;
-        
+
         if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return;
 
         boolean isCiv = false;
@@ -145,18 +118,18 @@ public class ClientLoreManager {
             // Dragon roosts are detected via the resident dragon's home position, not a registered Structure
             isNomad = true;
         } else {
-            isCiv = structureType.contains("village") || structureType.contains("city") || 
+            isCiv = structureType.contains("village") || structureType.contains("city") ||
                     structureType.contains("bastion") || structureType.contains("fortress") ||
                     structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
         }
-        
+
         String rawType = structureType.contains(":") ? structureType.substring(structureType.indexOf(":") + 1) : structureType;
         String formattedBiome = formatName(biomeRaw);
-        String formattedType = formatName(rawType); 
-        
+        String formattedType = formatName(rawType);
+
         if (isCiv) {
             String category = "civilization";
-            String name = NPCData.getRandomRealm(new java.util.Random()); 
+            String name = NPCData.getRandomRealm(new java.util.Random());
             addLore(structureId, name, "Discovering the history of this place...", category, structureType);
             String apiKey = Config.API_KEY.get();
             if (apiKey != null && !apiKey.isEmpty()) {
@@ -164,11 +137,13 @@ public class ClientLoreManager {
             }
         } else if (isNomad) {
             String category = "nomad";
-            String name = formattedType; 
+            String name = formattedType;
             addLore(structureId, name, "A nomadic settlement.", category, structureType);
+            reportToServer(structureId);
         } else {
             String category = "adventure";
             addLore(structureId, formattedType, "A hidden adventure structure.", category, structureType);
+            reportToServer(structureId);
         }
     }
 

@@ -15,9 +15,10 @@ import java.util.Set;
 
 // Vanilla has no event for "a world was deleted" - the "Delete World" button just wipes the save
 // folder and drops the player back on the (reloaded) singleplayer world list. So instead of hooking
-// that button, this watches the world list itself: once it finishes (re)loading, any lore/memory/
-// social file whose world no longer appears in it is stale and gets pruned. This also cleans up
-// after worlds removed outside the game entirely (e.g. deleted from the filesystem directly).
+// that button, this watches the world list itself: once it finishes (re)loading, any memory/social
+// file whose world no longer appears in it is stale and gets pruned. This also cleans up after
+// worlds removed outside the game entirely (e.g. deleted from the filesystem directly). Lore isn't
+// disk-cached anymore (see ClientLoreManager) so there's nothing to prune for it.
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID, value = Dist.CLIENT)
 public class WorldDataCleaner {
 
@@ -70,7 +71,6 @@ public class WorldDataCleaner {
                 existingWorldIds.add("sp_" + summary.getLevelName().replaceAll("[^a-zA-Z0-9.-]", "_"));
             }
 
-            ClientLoreManager.pruneDeletedWorlds(existingWorldIds);
             ClientMemoryManager.pruneDeletedWorlds(existingWorldIds);
             ClientSocialManager.pruneDeletedWorlds(existingWorldIds);
             prunedThisVisit = true;

@@ -63,11 +63,13 @@ public class PlayerLocationCommands {
     }
 
     // Sent once on login rather than relying only on change-broadcasts, so a player who wasn't
-    // online for a create/edit/reveal still starts with an up-to-date ClientLocationManager.
+    // online for a create/edit/reveal/lore-report still starts with an up-to-date
+    // ClientLocationManager/ClientLoreManager.
     @SubscribeEvent
     public static void onPlayerLogin(PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             NetworkHandler.sendLocationsTo(player);
+            NetworkHandler.sendLoreTo(player);
         }
     }
 
@@ -166,6 +168,8 @@ public class PlayerLocationCommands {
         String descriptionEnd = description.endsWith(".") ? "" : ".";
         String finalDescription = description + descriptionEnd + " Formerly known as a " + target.structureType().replace("_", " ") + ".";
         PlayerLocationData.Location location = data.create(name, finalDescription, player.getUUID(), pos);
+        location.formerStructureId = target.homeId();
+        data.setDirty();
         migrateResidents(level, pos, target.homeId(), location);
         IdentityHandler.forgetOldLocation(level, pos, target.homeId());
         IdentityHandler.considerNewLocation(level, location);

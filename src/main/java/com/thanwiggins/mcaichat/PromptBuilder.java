@@ -390,7 +390,7 @@ public class PromptBuilder {
                 ClientLocationManager.LocationInfo info = ClientLocationManager.get(homeId);
                 String homeName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
                 homeName += homeSuffix;
-                String description = (info != null) ? info.description : "";
+                String description = withFormerLore((info != null) ? info.description : "", info);
 
                 knowledge += "Home: " + homeName + (description.isEmpty() ? "" : " (" + description + ")") + "\n";
             } else {
@@ -428,7 +428,7 @@ public class PromptBuilder {
                     if (rawCivType.equals("player_created")) {
                         ClientLocationManager.LocationInfo info = ClientLocationManager.get(civId);
                         civName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
-                        civDescription = (info != null) ? info.description : "";
+                        civDescription = withFormerLore((info != null) ? info.description : "", info);
                     } else {
                         ClientLoreManager.StructureLore civLore = ClientLoreManager.getLore(civId);
                         civName = (civLore != null) ? civLore.name : civType;
@@ -469,6 +469,20 @@ public class PromptBuilder {
         }
         
         return knowledge.trim();
+    }
+
+    // Splices a claimed location's original structure lore back onto its description, so
+    // /base claim doesn't erase the history that had already been generated for that spot before
+    // a player took it over. Best-effort: lore is generated and cached per-client (see
+    // ClientLoreManager), so this only surfaces if this specific client already generated it -
+    // same as any other lore lookup in this mod.
+    private static String withFormerLore(String description, ClientLocationManager.LocationInfo info) {
+        if (info == null || info.formerStructureId.isEmpty()) return description;
+
+        ClientLoreManager.StructureLore oldLore = ClientLoreManager.getLore(info.formerStructureId);
+        if (oldLore == null || oldLore.background == null || oldLore.background.isEmpty()) return description;
+
+        return description.isEmpty() ? oldLore.background : description + " " + oldLore.background;
     }
 
     // One-word-ish capability tag ("Warrior", "Merchant", etc.) reused by both the full prompt

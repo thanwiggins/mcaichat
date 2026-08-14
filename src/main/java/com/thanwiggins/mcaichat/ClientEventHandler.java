@@ -10,8 +10,8 @@ public class ClientEventHandler {
 
     @SubscribeEvent
     public static void onPlayerLogin(ClientPlayerNetworkEvent.LoggingIn event) {
-        // Load the lore, memory, and social data when the player joins the world
-        ClientLoreManager.loadWorldLore();
+        // Load the memory and social data when the player joins the world - lore is no longer
+        // disk-cached here, it's re-synced from the server instead (see LoreSyncPacket).
         ClientMemoryManager.loadWorldMemory();
         ClientSocialManager.loadWorldSocial();
     }
@@ -19,7 +19,6 @@ public class ClientEventHandler {
     @SubscribeEvent
     public static void onPlayerLogout(ClientPlayerNetworkEvent.LoggingOut event) {
         // Save everything when the player disconnects or leaves the world
-        ClientLoreManager.saveWorldLore();
         ClientMemoryManager.saveWorldMemory();
         ClientSocialManager.saveWorldSocial();
     }
