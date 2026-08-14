@@ -1,9 +1,11 @@
 package com.thanwiggins.mcaichat;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.level.ChunkPos;
@@ -28,6 +30,15 @@ import java.util.Map;
 @Mod.EventBusSubscriber(modid = GeminiMod.MODID)
 public class PillagerOutpostSpawnLimiter {
     private static final String PILLAGER_OUTPOST_KEY = "minecraft:pillager_outpost";
+
+    // Vanilla ships no such tag itself (there's no data/minecraft/tags/worldgen/structure/
+    // pillager_outpost.json in the base game), but structure-variant mods that add their own
+    // outposts under a different namespace - e.g. Towns and Towers' 22 towns_and_towers:*
+    // biome variants - opt their structures into this shared tag specifically so other mods can
+    // treat them uniformly. Checking it costs nothing when it's empty/undefined, so this is safe
+    // to always check alongside the literal vanilla key below.
+    private static final TagKey<Structure> PILLAGER_OUTPOST_TAG =
+            TagKey.create(Registries.STRUCTURE, new ResourceLocation("pillager_outpost"));
 
     // Outposts spawn pillagers in a roughly 72-block-wide volume centered on the watchtower, well
     // beyond the structure's own generated bounding box, so a spawn has to be associated with the
@@ -55,11 +66,13 @@ public class PillagerOutpostSpawnLimiter {
     }
 
     // Same chunk-scan technique PlayerLocationCommands/IdentityHandler already use to find nearby
-    // structures, narrowed to just this one structure type and a small radius - outposts are a
-    // single-point feature, not a sprawling multi-piece structure like a village.
+    // structures, narrowed to a small radius - outposts are a single-point feature, not a
+    // sprawling multi-piece structure like a village - and matching either the exact vanilla
+    // structure key or membership in PILLAGER_OUTPOST_TAG, so modded outpost variants count too.
     private static String findNearbyOutpostId(ServerLevel level, BlockPos pos) {
         double maxDistSqr = ASSOCIATION_RADIUS_BLOCKS * ASSOCIATION_RADIUS_BLOCKS;
         ChunkPos centerChunk = new ChunkPos(pos);
+        Registry<Structure> structureRegistry = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
 
         for (int x = -SCAN_RADIUS_CHUNKS; x <= SCAN_RADIUS_CHUNKS; x++) {
             for (int z = -SCAN_RADIUS_CHUNKS; z <= SCAN_RADIUS_CHUNKS; z++) {
@@ -70,13 +83,17 @@ public class PillagerOutpostSpawnLimiter {
                     StructureStart start = entry.getValue();
                     if (start == null || !start.isValid()) continue;
 
-                    ResourceLocation key = level.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(entry.getKey());
-                    if (key == null || !key.toString().equals(PILLAGER_OUTPOST_KEY)) continue;
+                    Structure structure = entry.getKey();
+                    ResourceLocation key = structureRegistry.getKey(structure);
+                    boolean isVanillaOutpost = key != null && key.toString().equals(PILLAGER_OUTPOST_KEY);
+                    boolean isTaggedOutpost = structureRegistry.wrapAsHolder(structure).is(PILLAGER_OUTPOST_TAG);
+                    if (!isVanillaOutpost && !isTaggedOutpost) continue;
 
                     BlockPos startPos = new BlockPos(start.getBoundingBox().getCenter());
                     double distSqr = start.getBoundingBox().isInside(pos) ? 0.0 : pos.distSqr(startPos);
                     if (distSqr <= maxDistSqr) {
-                        return PILLAGER_OUTPOST_KEY + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
+                        String fullKey = key != null ? key.toString() : PILLAGER_OUTPOST_KEY;
+                        return fullKey + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
                     }
                 }
             }
