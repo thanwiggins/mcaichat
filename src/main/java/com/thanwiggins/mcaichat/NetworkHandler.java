@@ -61,6 +61,11 @@ public class NetworkHandler {
                 GoToPacket::encode,
                 GoToPacket::new,
                 GoToPacket::handle);
+
+        INSTANCE.registerMessage(id++, PlayerNameRevealPacket.class,
+                PlayerNameRevealPacket::encode,
+                PlayerNameRevealPacket::new,
+                PlayerNameRevealPacket::handle);
     }
 
     public static void broadcastLocations(ServerLevel level) {

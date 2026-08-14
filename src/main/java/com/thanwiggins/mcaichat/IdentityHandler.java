@@ -210,6 +210,16 @@ public class IdentityHandler {
             data.putString("mcaichat_home_id", "none");
         }
 
+        // An NPC born into a player-created location already lives there - it shouldn't need the
+        // player to say the location's name in chat (see ChatInterceptor.checkForLocationReveal)
+        // before it can use the real name instead of the "Player-Created Structure" placeholder.
+        String finalHomeId = data.getString("mcaichat_home_id");
+        if (data.getString("mcaichat_home_type").equals("player_created") && !finalHomeId.equals("none")) {
+            if (PlayerLocationData.get(serverLevel).reveal(finalHomeId, finalHomeId)) {
+                NetworkHandler.broadcastLocations(serverLevel);
+            }
+        }
+
         // Tether to the entity's own position when its home was settled, rather than the
         // structure's bounding-box center - more reliable for large structures (e.g. a village)
         // where that center can be far from where this specific NPC actually lives.
@@ -277,11 +287,17 @@ public class IdentityHandler {
             for (String civ : nearbyCivs) civList.add(StringTag.valueOf(civ));
             data.put("mcaichat_nearby_civs", civList);
 
-            if (data.getString("mcaichat_home_id").equals(location.id()) && entity instanceof PathfinderMob pathfinderMob) {
-                data.putInt("mcaichat_home_x", entityPos.getX());
-                data.putInt("mcaichat_home_y", entityPos.getY());
-                data.putInt("mcaichat_home_z", entityPos.getZ());
-                pathfinderMob.restrictTo(entityPos, Config.HOME_RADIUS.get());
+            if (data.getString("mcaichat_home_id").equals(location.id())) {
+                // This new location just became the NPC's home - it already knows its own home's
+                // name, same exception as generateWorldKnowledge's initial scan applies.
+                PlayerLocationData.get(serverLevel).reveal(location.id(), location.id());
+
+                if (entity instanceof PathfinderMob pathfinderMob) {
+                    data.putInt("mcaichat_home_x", entityPos.getX());
+                    data.putInt("mcaichat_home_y", entityPos.getY());
+                    data.putInt("mcaichat_home_z", entityPos.getZ());
+                    pathfinderMob.restrictTo(entityPos, Config.HOME_RADIUS.get());
+                }
             }
         }
     }

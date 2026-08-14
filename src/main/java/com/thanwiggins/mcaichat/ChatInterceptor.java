@@ -63,6 +63,7 @@ public class ChatInterceptor {
         }
 
         checkForLocationReveal(targetEntity, message);
+        checkForNameReveal(player, targetEntity, message);
 
         long currentTick = targetEntity.level().getGameTime();
 
@@ -87,6 +88,18 @@ public class ChatInterceptor {
 
         ConversationManager.addMessage("user", message, currentTick);
         GeminiClient.sendMessage(apiKey, systemPrompt, ConversationManager.conversationHistory, entityName, colorCode);
+    }
+
+    // If the player just said their own (configured) display name to an NPC that doesn't already
+    // know it, tell the server so it can remember this NPC has been introduced to them - see
+    // PromptBuilder.knowsPlayerName/buildPlayerSocialLine and PlayerNameRevealPacket.
+    private static void checkForNameReveal(Player player, Entity targetEntity, String message) {
+        String playerName = PromptBuilder.getPlayerDisplayName(player);
+        if (playerName.isEmpty() || PromptBuilder.knowsPlayerName(targetEntity, player)) return;
+
+        if (message.toLowerCase().contains(playerName.toLowerCase())) {
+            NetworkHandler.INSTANCE.sendToServer(new PlayerNameRevealPacket(targetEntity.getId()));
+        }
     }
 
     // If the player just said a player-created location's real name to an NPC that knows about it

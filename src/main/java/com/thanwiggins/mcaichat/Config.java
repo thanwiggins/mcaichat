@@ -4,16 +4,21 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.item.trading.Merchant;
 
 public class Config {
     public static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
     public static final ForgeConfigSpec SPEC;
     
     public static final ForgeConfigSpec.ConfigValue<String> API_KEY;
+    public static final ForgeConfigSpec.ConfigValue<String> PLAYER_DISPLAY_NAME;
+    public static final ForgeConfigSpec.ConfigValue<String> PLAYER_DESCRIPTION;
     public static final ForgeConfigSpec.ConfigValue<String> WHITELIST_ENTITIES;
     public static final ForgeConfigSpec.ConfigValue<String> BLACKLIST_ENTITIES;
     public static final ForgeConfigSpec.ConfigValue<String> WANDERER_ENTITIES;
     public static final ForgeConfigSpec.IntValue HOME_RADIUS;
+    public static final ForgeConfigSpec.IntValue MIN_LOCATION_DISTANCE;
 
 
     public static final ForgeConfigSpec.ConfigValue<String> CUSTOM_MONSTERS;
@@ -32,9 +37,15 @@ public class Config {
         BUILDER.pop();
 
         BUILDER.push("Game Settings");
+        PLAYER_DISPLAY_NAME = BUILDER.comment("Optional name NPCs will know you by instead of your Minecraft username. Leave blank to use your username.")
+                         .define("playerDisplayName", "");
+
+        PLAYER_DESCRIPTION = BUILDER.comment("Optional short description of yourself NPCs can reference (e.g. 'a wandering blacksmith'). Leave blank for none.")
+                         .define("playerDescription", "");
+
         WHITELIST_ENTITIES = BUILDER.comment("Comma-separated list of entity IDs that can be chatted with.")
                          .define("whitelistEntities", "minecraft:villager");
-                         
+
         BLACKLIST_ENTITIES = BUILDER.comment("Comma-separated list of entity IDs that the AI should completely ignore.")
                          .define("blacklistEntities", "minecraft:armor_stand");
 
@@ -43,6 +54,9 @@ public class Config {
 
         HOME_RADIUS = BUILDER.comment("Radius (in blocks) an NPC is biased to stay within once it's claimed a home. Doesn't stop them leaving outright, just penalizes wandering further out.")
                          .defineInRange("homeRadius", 32, 1, Integer.MAX_VALUE);
+
+        MIN_LOCATION_DISTANCE = BUILDER.comment("Minimum distance (in blocks) a player-founded location (/base new, /base claim) must be from any other existing structure, civilization, or player-founded location.")
+                         .defineInRange("minLocationDistance", 150, 0, Integer.MAX_VALUE);
 
         CUSTOM_MONSTERS = BUILDER.comment("Entities forced to be classified as monsters").define("customMonsters", "");
         CUSTOM_CREATURES = BUILDER.comment("Entities forced to be classified as creatures").define("customCreatures", "");
@@ -112,9 +126,8 @@ public class Config {
     // pulls in client-only classes elsewhere and this needs to be safely callable from server-side
     // AI code too.
     public static String getSentimentColorCode(net.minecraft.world.entity.player.Player player, net.minecraft.world.entity.Entity target) {
-        String targetRegistryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
         boolean isMonster = target instanceof net.minecraft.world.entity.monster.Monster;
-        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
+        boolean isValarianFighter = isValarianFighter(target);
 
         if (isValarianFighter && target.getTeam() != null) {
             if (target.isAlliedTo(player)) {
@@ -131,6 +144,50 @@ public class Config {
 
     public static boolean isHostileToPlayer(net.minecraft.world.entity.player.Player player, net.minecraft.world.entity.Entity target) {
         return getSentimentColorCode(player, target).equals("§c");
+    }
+
+    // Faction standing between two (non-player) entities - NEUTRAL unless both are Valarian
+    // Conquest fighters with assigned teams, in which case ALLIED/HOSTILE mirrors their team
+    // alliance. Used by PromptBuilder's danger scan so an NPC can tell friendly reinforcements
+    // apart from an enemy raiding party.
+    public static EntityRelation getFactionRelation(net.minecraft.world.entity.Entity a, net.minecraft.world.entity.Entity b) {
+        if (isValarianFighter(a) && isValarianFighter(b) && a.getTeam() != null && b.getTeam() != null) {
+            return a.isAlliedTo(b) ? EntityRelation.ALLIED : EntityRelation.HOSTILE;
+        }
+        return EntityRelation.NEUTRAL;
+    }
+
+    private static boolean isValarianFighter(net.minecraft.world.entity.Entity entity) {
+        String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
+        return registryName.equals("valarian_conquest:archer") || registryName.equals("valarian_conquest:soldier");
+    }
+
+    // Whether this entity is capable of fighting back if attacked - used by /base claim to
+    // refuse claiming a structure that still has living defenders.
+    public static boolean isCapableFighter(net.minecraft.world.entity.Entity entity) {
+        String registryName = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
+        boolean isMonster = entity instanceof net.minecraft.world.entity.monster.Monster;
+        boolean isIronGolem = entity instanceof IronGolem;
+        boolean isGuardVillager = registryName.equals("guardvillagers:guard");
+        return isMonster || isIronGolem || isGuardVillager || isValarianFighter(entity);
+    }
+
+    // One-word-ish capability tag ("Warrior", "Merchant", etc.) shared by the full system prompt
+    // and NameplateRenderer/SyncNPCPacket's social-circle registration, so both stay in sync.
+    public static String getShortCapabilityString(net.minecraft.world.entity.Entity target) {
+        boolean isCapableFighter = isCapableFighter(target);
+        boolean isMerchant = target instanceof Merchant;
+
+        if (isCapableFighter && isMerchant) return "Warrior & Merchant";
+        if (isCapableFighter) return "Warrior";
+        if (isMerchant) return "Merchant";
+        return "Citizen";
+    }
+
+    public enum EntityRelation {
+        ALLIED,
+        HOSTILE,
+        NEUTRAL
     }
 
     public static boolean isNarrativeEffect(net.minecraft.world.effect.MobEffectInstance effect) {

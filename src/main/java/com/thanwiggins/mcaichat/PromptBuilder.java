@@ -6,7 +6,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.ambient.AmbientCreature;
 import net.minecraft.world.entity.animal.WaterAnimal;
@@ -107,7 +106,7 @@ public class PromptBuilder {
         String world = buildWorldKnowledge(pos, target);
         String background = buildPersonalBackground(player, target);
         String special = buildSpecialInstructions(target);
-        String social = buildSocialCircle(target);
+        String social = buildSocialCircle(player, target);
         String exigent = buildExigentCircumstances(level, player, target);
 
         return basePrompt
@@ -120,10 +119,78 @@ public class PromptBuilder {
     }
 
     // Player-authored, per-entity-type flavor text set via the Creature config screen (e.g.
-    // "You secretly work for the Thieves' Guild"), stored globally by EntityInstructionManager.
+    // "You secretly work for the Thieves' Guild"), stored globally by EntityInstructionManager,
+    // plus a line narrating any active /follow, /goto, or /stay directive so the NPC can
+    // reference its own standing orders in conversation.
     private static String buildSpecialInstructions(Entity target) {
         String registryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        return EntityInstructionManager.get(registryName);
+        String flavor = EntityInstructionManager.get(registryName);
+        String directiveText = buildDirectiveInstruction(target);
+
+        if (flavor.isEmpty()) return directiveText;
+        return directiveText.isEmpty() ? flavor : flavor + "\n" + directiveText;
+    }
+
+    // Narrates the directive NpcDirectiveCommands/DirectiveGoal are already carrying out
+    // mechanically, so the NPC can talk about it ("I'm under orders to follow so-and-so") rather
+    // than just silently walking. Only names the commanding player if this NPC actually knows
+    // their name (see knowsPlayerName) - otherwise falls back to "a player".
+    private static String buildDirectiveInstruction(Entity target) {
+        CompoundTag data = target.getPersistentData();
+        String directive = data.getString("mcaichat_directive");
+        if (!directive.equals("FOLLOW") && !directive.equals("GOTO") && !directive.equals("STAY")) {
+            return "";
+        }
+
+        String playerName = "a player";
+        if (data.contains("mcaichat_directive_player")) {
+            Player commandingPlayer = target.level().getPlayerByUUID(data.getUUID("mcaichat_directive_player"));
+            if (commandingPlayer != null && knowsPlayerName(target, commandingPlayer)) {
+                playerName = getPlayerDisplayName(commandingPlayer);
+            }
+        }
+
+        return switch (directive) {
+            case "FOLLOW" -> "You are under standing orders from " + playerName + " to follow them wherever they go.";
+            case "GOTO" -> "You are under standing orders from " + playerName + " to travel to " + describeGotoDestination(target, data) + ".";
+            case "STAY" -> "You are under standing orders from " + playerName + " to stay exactly where you are.";
+            default -> "";
+        };
+    }
+
+    private static String describeGotoDestination(Entity target, CompoundTag data) {
+        String locationName = data.getString("mcaichat_directive_location_name");
+        if (!locationName.isEmpty()) return locationName;
+
+        BlockPos here = target.blockPosition();
+        int destX = data.getInt("mcaichat_directive_x");
+        int destZ = data.getInt("mcaichat_directive_z");
+        double dist = Math.sqrt(Math.pow(here.getX() - destX, 2) + Math.pow(here.getZ() - destZ, 2));
+        String direction = getDirection(here.getX(), here.getZ(), destX, destZ);
+        return "a location " + getRelativeDistance(dist) + " to the " + direction;
+    }
+
+    // The name/known-ness pairing used both to narrate directives above and to fill in the
+    // player's own line in buildSocialCircle - see PlayerNameRevealPacket for how an NPC learns it.
+    static String getPlayerDisplayName(Player player) {
+        Player localPlayer = Minecraft.getInstance().player;
+        if (player == localPlayer) {
+            String custom = Config.PLAYER_DISPLAY_NAME.get();
+            if (custom != null && !custom.isBlank()) return custom.trim();
+        }
+        return player.getName().getString();
+    }
+
+    static boolean knowsPlayerName(Entity target, Player player) {
+        CompoundTag data = target.getPersistentData();
+        if (!data.contains("mcaichat_known_players", 9)) return false;
+
+        ListTag known = data.getList("mcaichat_known_players", 8);
+        String playerId = player.getUUID().toString();
+        for (int i = 0; i < known.size(); i++) {
+            if (known.getString(i).equals(playerId)) return true;
+        }
+        return false;
     }
 
     // Passive scene-setting: biome, time of day, weather, season (if Serene Seasons is installed),
@@ -304,15 +371,25 @@ public class PromptBuilder {
         if (!homeId.isEmpty() && !homeId.equals("none")) {
             String rawHomeType = data.getString("mcaichat_home_type");
 
+            // How far the NPC currently is from its own claimed home, not whether the player
+            // happens to be standing in it - lets an NPC away on a GOTO directive (see
+            // buildDirectiveInstruction) stay self-aware of the distance it's traveled.
+            String homeSuffix = "";
+            if (data.contains("mcaichat_home_x")) {
+                int homeX = data.getInt("mcaichat_home_x");
+                int homeZ = data.getInt("mcaichat_home_z");
+                double homeDist = Math.sqrt(Math.pow(pos.getX() - homeX, 2) + Math.pow(pos.getZ() - homeZ, 2));
+                String label = getRelativeDistance(homeDist, "here");
+                homeSuffix = " (" + (label.equals("here") ? "here" : label + " away") + ")";
+            }
+
             if (rawHomeType.equals("player_created")) {
                 // Player-created locations fold their (always-visible) description straight into
                 // the name/placeholder reference, rather than a separate "Local Lore/History" line -
                 // there's no separate history to generate, just the player's own description.
                 ClientLocationManager.LocationInfo info = ClientLocationManager.get(homeId);
                 String homeName = (info != null) ? info.displayName(homeId) : ClientLocationManager.PLACEHOLDER_NAME;
-                if (homeId.equals(ClientLoreManager.currentStructureId)) {
-                    homeName += " (here)";
-                }
+                homeName += homeSuffix;
                 String description = (info != null) ? info.description : "";
 
                 knowledge += "Home: " + homeName + (description.isEmpty() ? "" : " (" + description + ")") + "\n";
@@ -320,9 +397,7 @@ public class PromptBuilder {
                 String homeType = formatName(rawHomeType);
                 ClientLoreManager.StructureLore homeLore = ClientLoreManager.getLore(homeId);
                 String homeName = (homeLore != null) ? homeLore.name : homeType;
-                if (homeId.equals(ClientLoreManager.currentStructureId)) {
-                    homeName += " (here)";
-                }
+                homeName += homeSuffix;
                 String loreText = (homeLore != null) ? homeLore.background : "History currently unknown.";
 
                 knowledge += "Home: " + homeName + "\nLocal Lore/History: " + loreText + "\n";
@@ -397,21 +472,11 @@ public class PromptBuilder {
     }
 
     // One-word-ish capability tag ("Warrior", "Merchant", etc.) reused by both the full prompt
-    // and NameplateRenderer's social-circle registration, so both stay in sync.
+    // and NameplateRenderer/SyncNPCPacket's social-circle registration, so both stay in sync.
+    // Delegates to Config - the canonical version, since PlayerLocationCommands (server-side)
+    // also needs this exact check and can't safely depend on this client-heavy class.
     public static String getShortCapabilityString(Entity target) {
-        String targetRegistryName = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        boolean isMonster = target instanceof Monster;
-        boolean isIronGolem = target instanceof IronGolem;
-        boolean isGuardVillager = targetRegistryName.equals("guardvillagers:guard");
-        boolean isValarianFighter = targetRegistryName.equals("valarian_conquest:archer") || targetRegistryName.equals("valarian_conquest:soldier");
-        boolean isMerchant = target instanceof net.minecraft.world.item.trading.Merchant;
-        
-        boolean isCapableFighter = isMonster || isIronGolem || isGuardVillager || isValarianFighter;
-        
-        if (isCapableFighter && isMerchant) return "Warrior & Merchant";
-        if (isCapableFighter) return "Warrior";
-        if (isMerchant) return "Merchant";
-        return "Citizen";
+        return Config.getShortCapabilityString(target);
     }
     
     // Nameplate/chat color reflecting how this entity feels about the player - monster
@@ -509,9 +574,31 @@ public class PromptBuilder {
                 name, entityType, personality, sentiment, capability, tradingInfo, memoryStr, timeElapsedStr);
     }
 
+    // The player's own line (if this NPC knows their name/description - see
+    // PlayerNameRevealPacket) plus other NPCs registered under the same home structure.
+    private static String buildSocialCircle(Player player, Entity target) {
+        String playerLine = buildPlayerSocialLine(player, target);
+        String homeText = buildHomeSocialCircle(target);
+        return playerLine.isEmpty() ? homeText : playerLine + "\n" + homeText;
+    }
+
+    // Shows the player's real display name once the NPC has been told it, otherwise an
+    // anonymized "The Player" line if a description was set - lets an NPC describe a stranger
+    // in the third person before an introduction, and by name after one.
+    private static String buildPlayerSocialLine(Player player, Entity target) {
+        String description = Config.PLAYER_DESCRIPTION.get();
+        boolean hasDescription = description != null && !description.isBlank();
+
+        if (knowsPlayerName(target, player)) {
+            String name = getPlayerDisplayName(player);
+            return "- " + name + " | " + (hasDescription ? description.trim() : "A player");
+        }
+        return hasDescription ? "- The Player | " + description.trim() : "";
+    }
+
     // Other NPCs registered under the same home structure (see NameplateRenderer), so this NPC
     // can talk about its "neighbors" - including whether one of them has since died.
-    private static String buildSocialCircle(Entity target) {
+    private static String buildHomeSocialCircle(Entity target) {
         CompoundTag data = target.getPersistentData();
         String homeId = data.getString("mcaichat_home_id");
         if (homeId.isEmpty() || homeId.equals("none")) {
@@ -585,25 +672,41 @@ public class PromptBuilder {
         AABB dangerBox = target.getBoundingBox().inflate(16.0D);
         LivingEntity targetLiving = target instanceof LivingEntity le ? le : null;
 
-        // Every non-blacklisted, non-chattable living entity nearby - hostile, passive, or
-        // ambient alike - gets surfaced below, just sorted into separate buckets by type.
+        // Every non-blacklisted living entity nearby - hostile, passive, ambient, or a fellow
+        // whitelisted NPC alike - gets surfaced below, just sorted into separate buckets by type.
         // Line-of-sight is required so the NPC can't "sense" threats through walls.
         List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox,
             entity -> entity != target
                 && entity != player
                 && !Config.isBlacklisted(entity)
-                && !Config.isWhitelisted(entity)
                 && (targetLiving == null || targetLiving.hasLineOfSight(entity))
         );
 
         List<String> hostileNames = new ArrayList<>();
         List<String> creatureNames = new ArrayList<>();
         List<String> wildlifeNames = new ArrayList<>();
+        boolean hasHostileNpc = false;
+        List<String> alliedNpcNames = new ArrayList<>();
+        List<String> neutralNpcNames = new ArrayList<>();
 
         for (LivingEntity entity : nearbyEntities) {
+            if (Config.isWhitelisted(entity)) {
+                // A fellow chattable NPC - judged by faction standing rather than the
+                // monster/creature/wildlife classifier below.
+                String npcName = entity.getPersistentData().getString("mcaichat_name");
+                if (npcName.isEmpty()) npcName = entity.getDisplayName().getString();
+
+                switch (Config.getFactionRelation(target, entity)) {
+                    case HOSTILE -> hasHostileNpc = true;
+                    case ALLIED -> { if (!alliedNpcNames.contains(npcName)) alliedNpcNames.add(npcName); }
+                    default -> { if (!neutralNpcNames.contains(npcName)) neutralNpcNames.add(npcName); }
+                }
+                continue;
+            }
+
             String name = entity.getDisplayName().getString();
             String registryName = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).toString();
-            
+
             boolean isHostile = false;
             boolean isCreature = false;
             boolean isWildlife = false;
@@ -624,7 +727,7 @@ public class PromptBuilder {
                     isCreature = true;
                 }
             }
-            
+
             if (isHostile) {
                 if (!hostileNames.contains(name)) hostileNames.add(name);
             } else if (isWildlife) {
@@ -648,7 +751,19 @@ public class PromptBuilder {
             String joinedWildlife = String.join(", ", wildlifeNames);
             exigent.append("NOTE: There is ambient wildlife nearby (").append(joinedWildlife).append("). ");
         }
-        
+
+        if (hasHostileNpc) {
+            exigent.append("ALERT! Hostile enemies from another faction are nearby! ");
+        }
+
+        if (!alliedNpcNames.isEmpty()) {
+            exigent.append("NOTE: There are allies nearby (").append(String.join(", ", alliedNpcNames)).append("). ");
+        }
+
+        if (!neutralNpcNames.isEmpty()) {
+            exigent.append("NOTE: You notice other locals nearby (").append(String.join(", ", neutralNpcNames)).append("). ");
+        }
+
         if (target instanceof LivingEntity livingTarget) {
             float currentHealth = livingTarget.getHealth();
             float maxHealth = livingTarget.getMaxHealth();
@@ -673,8 +788,14 @@ public class PromptBuilder {
     // Describes a block distance in vague relative terms rather than exact numbers - NPCs "know
     // of" locations, they don't have a map with a marker on it.
     private static String getRelativeDistance(double dist) {
-        if (dist < 50) return "very close";
-        if (dist < 150) return "nearby";
+        return getRelativeDistance(dist, "very close");
+    }
+
+    // closeLabel lets callers substitute a context-appropriate word for the <50-block bucket -
+    // e.g. buildWorldKnowledge's home-distance suffix passes "here" instead of "very close".
+    private static String getRelativeDistance(double dist, String closeLabel) {
+        if (dist < 50) return closeLabel;
+        if (dist < 150) return "a short distance";
         if (dist < 300) return "a moderate distance";
         return "quite far";
     }
