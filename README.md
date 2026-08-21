@@ -24,7 +24,8 @@ know or care about, and lets you actually act on the world it describes.
 - **Sleeping entities can't be chatted with** - an entity lying in a bed won't respond to chat or
   strike up a conversation, and an in-progress conversation ends if the entity falls asleep.
 - **Generated lore** - the first time a "civilization" structure is discovered, Gemini writes a short
-  history for it, cached forever after.
+  history for it. The result is server-authoritative and shared with every player from then on, not
+  just whoever happened to generate it first.
 - **Social circles** - entities sharing a home know about each other (registered the moment a new
   resident is synced in, not just when someone looks at it), including if one has died.
 - **It has to actually get to know you** - NPCs refer to you as "the player" until you tell one your
@@ -47,7 +48,9 @@ know or care about, and lets you actually act on the world it describes.
 - **`/base edit <name> <description>`** - update a location's description (founder-only, costs gold).
 - **`/base claim <name> <description>`** - conquer an existing civilization, nomad camp, or
   [Ice and Fire](https://www.curseforge.com/minecraft/mc-mods/ice-and-fire) dragon roost once its
-  defenders are dead, migrating its surviving residents to serve your new location instead.
+  defenders are dead, migrating its surviving residents to serve your new location instead. A
+  "Formerly known as X" line is appended to your description automatically, carrying over any
+  lore the old structure had already generated.
 - A location's real name stays hidden from NPCs (shown as a placeholder) until someone actually says
   it in chat near an NPC who'd plausibly know it - except its own residents, who know their home's
   name from the moment they move in.
