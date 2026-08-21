@@ -48,29 +48,77 @@ public class ConversationManager {
     public static String lastInitTargetName = "";
     public static long lastInitSystemPromptTick = -1;
 
-    public static void startConversation(Entity target, long currentTick, boolean npcInitiated) {
+    // The NPC's shared memory dossier, fetched from the server the moment a conversation claim
+    // is granted (piggybacked on ConversationClaimResponsePacket) - see PromptBuilder.
+    // memoryLastConvoTick <= 0 means "no prior conversation with anyone", mirroring the old
+    // ClientMemoryManager's "no entry yet" case.
+    public static String currentMemorySummary = "";
+    public static long currentMemoryLastConvoTick = 0;
+
+    // A conversation claim in flight - set by requestClaim, consumed by onClaimResponse once the
+    // server replies. Only one claim is ever pending at a time (both entry points - a player's
+    // own chat message and an NPC's own initiation roll - go through requestClaim serially).
+    private static Entity pendingEntity = null;
+    private static Runnable pendingOnGranted = null;
+    private static Runnable pendingOnDenied = null;
+
+    // Asks the server for exclusive ownership of this NPC's conversation before any dialogue is
+    // generated - see ConversationClaimRequestPacket/ConversationClaimResponsePacket. onGranted
+    // should call commitConversation and then proceed (build a prompt, call Gemini); onDenied
+    // handles the rejection case (a message for a player-initiated attempt, silence for an
+    // NPC-initiated one).
+    public static void requestClaim(Entity target, Runnable onGranted, Runnable onDenied) {
+        pendingEntity = target;
+        pendingOnGranted = onGranted;
+        pendingOnDenied = onDenied;
+        NetworkHandler.INSTANCE.sendToServer(new ConversationClaimRequestPacket(target.getId()));
+    }
+
+    public static void onClaimResponse(int entityId, boolean granted, String memorySummary, long memoryLastConvoTick) {
+        if (pendingEntity == null || pendingEntity.getId() != entityId) return;
+
+        Runnable onGranted = pendingOnGranted;
+        Runnable onDenied = pendingOnDenied;
+        pendingEntity = null;
+        pendingOnGranted = null;
+        pendingOnDenied = null;
+
+        if (granted) {
+            currentMemorySummary = memorySummary;
+            currentMemoryLastConvoTick = memoryLastConvoTick;
+            if (onGranted != null) onGranted.run();
+        } else if (onDenied != null) {
+            onDenied.run();
+        }
+    }
+
+    // Establishes local conversation state once the server has actually granted a claim for
+    // this NPC - call only from a requestClaim onGranted callback.
+    public static void commitConversation(Entity target, long currentTick, boolean npcInitiated) {
         activeEntity = target;
         conversationHistory = new JsonArray();
         lastMessageTick = currentTick;
         isNpcInitiated = npcInitiated;
         modelReplyCount = 0;
-
-        // Tells the server to flag this entity as "chatting", which ChattingGoal reads to make it
-        // stop wandering and look at the player for the duration of the conversation.
-        NetworkHandler.INSTANCE.sendToServer(new ConversationStatePacket(target.getId(), true));
     }
 
     public static void endConversation(long currentTick) {
         if (activeEntity != null && conversationHistory.size() > 0) {
             String apiKey = Config.API_KEY.get();
             if (apiKey != null && !apiKey.isEmpty()) {
-                GeminiClient.summarizeConversation(apiKey, activeEntity, conversationHistory.deepCopy(), currentTick);
+                String playerName = PromptBuilder.getPlayerDisplayName(Minecraft.getInstance().player);
+                // Captured now, synchronously - summarizeConversation's actual work runs on a
+                // background thread pool, which could otherwise race the currentMemorySummary
+                // reset just below.
+                GeminiClient.summarizeConversation(apiKey, activeEntity, conversationHistory.deepCopy(), currentTick, playerName, currentMemorySummary);
             }
-            
-            NetworkHandler.INSTANCE.sendToServer(new ConversationStatePacket(activeEntity.getId(), false));
+
+            NetworkHandler.INSTANCE.sendToServer(new ConversationStatePacket(activeEntity.getId()));
         }
         activeEntity = null;
         conversationHistory = new JsonArray();
+        currentMemorySummary = "";
+        currentMemoryLastConvoTick = 0;
     }
 
     public static void addMessage(String role, String text, long currentTick) {
@@ -114,7 +162,7 @@ public class ConversationManager {
             AABB box = mc.player.getBoundingBox().inflate(8.0D);
 
             List<Entity> nearby = mc.level.getEntities(mc.player, box, e ->
-                Config.isWhitelisted(e) && !Config.isBlacklisted(e) &&
+                EffectiveConfig.isWhitelisted(e) && !EffectiveConfig.isBlacklisted(e) &&
                 !e.isInvisible() && // an invisible NPC shouldn't give away its position by speaking up
                 !(e instanceof LivingEntity le && le.isSleeping()) && // asleep in bed - can't strike up a conversation
                 (!initiationCooldowns.containsKey(e.getUUID()) || (currentTick - initiationCooldowns.get(e.getUUID())) > 2400) && // 2 minute per-NPC cooldown
@@ -128,11 +176,13 @@ public class ConversationManager {
                 // re-roll again next cycle.
                 initiationCooldowns.put(target.getUUID(), currentTick);
 
-                // NPCs that already have a memory of the player (i.e. this isn't their first
-                // interaction) are far more eager to speak up than total strangers. Among strangers,
-                // ones already friendly toward the player are likelier to strike up a chat than
-                // hostile ones.
-                boolean knowsPlayer = ClientMemoryManager.getMemory(target.getUUID()) != null;
+                // NPCs that already have a memory of a past conversation (i.e. this isn't anyone's
+                // first interaction with them) are far more eager to speak up than total strangers.
+                // Among strangers, ones already friendly toward the player are likelier to strike
+                // up a chat than hostile ones. mcaichat_memory_last_convo_tick rides along on
+                // whatever SyncNPCPacket has already merged into this entity's local shadow copy -
+                // no separate lookup needed.
+                boolean knowsPlayer = target.getPersistentData().getLong("mcaichat_memory_last_convo_tick") > 0;
                 double chance;
                 if (knowsPlayer) {
                     chance = 0.5;
@@ -149,11 +199,16 @@ public class ConversationManager {
 
                 if (roll < chance) {
                     lastInitiationTick = currentTick;
-                    startConversation(target, currentTick, true); // true: the NPC initiated
 
-                    String apiKey = Config.API_KEY.get();
-                    if (apiKey != null && !apiKey.isEmpty()) {
-                        
+                    // Claim the NPC's conversation before generating anything - if another player
+                    // already holds it, this greeting attempt is dropped silently (the cooldown
+                    // above already applies regardless of outcome).
+                    requestClaim(target, () -> {
+                        commitConversation(target, currentTick, true); // true: the NPC initiated
+
+                        String apiKey = Config.API_KEY.get();
+                        if (apiKey == null || apiKey.isEmpty()) return;
+
                         String sysPrompt = PromptBuilder.getSystemPrompt(mc.player, target, true);
 
                         String name = target.getPersistentData().getString("mcaichat_name");
@@ -164,13 +219,13 @@ public class ConversationManager {
                         lastInitSystemPromptTick = currentTick;
 
                         String colorCode = PromptBuilder.getSentimentColorCode(mc.player, target);
-                        
+
                         if (debugInit) {
                             System.out.println("====== AI CHAT INIT DEBUG ======");
                             System.out.println("ROLL: " + roll);
                             System.out.println("PROMPT:\n" + sysPrompt);
                             System.out.println("================================");
-                            
+
                             mc.player.sendSystemMessage(Component.literal("§e[Init Debug] §fSending Initiation Prompt for " + name + " (Check game console for cleaner formatting)"));
                             mc.player.sendSystemMessage(Component.literal("§7" + sysPrompt));
                         }
@@ -190,7 +245,7 @@ public class ConversationManager {
                                     0.0D, 0.0D, 0.0D);
                             }
                         });
-                    }
+                    }, null); // null onDenied: a lost greeting race stays silent
                 }
             }
         }

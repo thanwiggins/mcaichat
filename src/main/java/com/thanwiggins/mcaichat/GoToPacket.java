@@ -50,6 +50,7 @@ public class GoToPacket {
 
             Entity target = sender.level().getEntity(this.entityId);
             if (target == null) return;
+            if (!NpcDirectiveCommands.requireUnownedOrOwnedBy(sender, target)) return;
 
             NpcDirectiveCommands.setGotoDirective(target, sender, new BlockPos(this.x, this.y, this.z));
             NpcDirectiveCommands.speak(sender, target, this.message);

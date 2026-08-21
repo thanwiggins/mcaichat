@@ -51,6 +51,7 @@ public class NpcDirectiveCommands {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         Entity target = requireTarget(player);
         if (target == null) return 0;
+        if (!requireUnownedOrOwnedBy(player, target)) return 0;
 
         target.getPersistentData().putString("mcaichat_directive", "FOLLOW");
         target.getPersistentData().putUUID("mcaichat_directive_player", player.getUUID());
@@ -63,6 +64,7 @@ public class NpcDirectiveCommands {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         Entity target = requireTarget(player);
         if (target == null) return 0;
+        if (!requireUnownedOrOwnedBy(player, target)) return 0;
 
         target.getPersistentData().putString("mcaichat_directive", "STAY");
         target.getPersistentData().putUUID("mcaichat_directive_player", player.getUUID());
@@ -75,10 +77,12 @@ public class NpcDirectiveCommands {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         Entity target = requireTarget(player);
         if (target == null) return 0;
+        if (!requireUnownedOrOwnedBy(player, target)) return 0;
 
         // Directives never touch restrictTo, so clearing this is all it takes for wander
         // (and home-tether bias, if the NPC has a home) to resume on its own.
         target.getPersistentData().putString("mcaichat_directive", "NONE");
+        target.getPersistentData().remove("mcaichat_directive_player");
 
         speak(player, target, message != null ? message : "We're all done!");
         return 1;
@@ -92,6 +96,30 @@ public class NpcDirectiveCommands {
         target.getPersistentData().putInt("mcaichat_directive_x", pos.getX());
         target.getPersistentData().putInt("mcaichat_directive_y", pos.getY());
         target.getPersistentData().putInt("mcaichat_directive_z", pos.getZ());
+    }
+
+    // Directives lock to whoever claims them first and stay locked - even across the owner
+    // going offline - until that same player explicitly /resume's the NPC. Any other player's
+    // /follow, /stay, /goto, or /resume attempt on an already-owned NPC is rejected outright.
+    // Package-visible - GoToPacket.handle reuses this same check before calling setGotoDirective.
+    static boolean requireUnownedOrOwnedBy(ServerPlayer player, Entity target) {
+        var data = target.getPersistentData();
+        if (!data.contains("mcaichat_directive_player")) return true;
+
+        java.util.UUID ownerId = data.getUUID("mcaichat_directive_player");
+        if (ownerId.equals(player.getUUID())) return true;
+
+        // A directive of "NONE" with a stale owner UUID left over from a prior /resume-less
+        // claim isn't actually locked to anyone.
+        String directive = data.getString("mcaichat_directive");
+        if (directive.isEmpty() || directive.equals("NONE")) return true;
+
+        String npcName = target.getPersistentData().getString("mcaichat_name");
+        if (npcName.isEmpty()) npcName = target.getDisplayName().getString();
+
+        player.sendSystemMessage(Component.literal(
+                "§7" + npcName + " is already following someone else's orders."));
+        return false;
     }
 
     private static Entity requireTarget(ServerPlayer player) {

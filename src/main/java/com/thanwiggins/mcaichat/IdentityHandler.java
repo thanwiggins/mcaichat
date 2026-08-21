@@ -220,6 +220,20 @@ public class IdentityHandler {
             }
         }
 
+        // Registers this NPC into its home's server-authoritative "who lives here" roster the
+        // moment its home is settled, so every player - not just whoever's client happened to
+        // observe this NPC - sees the same social circle. See SocialRosterData.
+        if (!finalHomeId.equals("none")) {
+            String entityType = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).getPath();
+            String capabilities = Config.getShortCapabilityString(entity);
+            boolean added = SocialRosterData.get(serverLevel).addCitizen(
+                    finalHomeId, entity.getUUID(), data.getString("mcaichat_name"), entityType,
+                    data.getString("mcaichat_personality"), capabilities);
+            if (added) {
+                NetworkHandler.broadcastSocialRoster(serverLevel, finalHomeId);
+            }
+        }
+
         // Tether to the entity's own position when its home was settled, rather than the
         // structure's bounding-box center - more reliable for large structures (e.g. a village)
         // where that center can be far from where this specific NPC actually lives.

@@ -41,27 +41,36 @@ public class GeminiConfigScreen extends Screen {
 
         // Creature Category Config Button
         this.addRenderableWidget(Button.builder(Component.literal("Creature Config"), button -> {
-            Config.API_KEY.set(this.apiKeyBox.getValue());
-            Config.PLAYER_DISPLAY_NAME.set(this.displayNameBox.getValue());
-            Config.PLAYER_DESCRIPTION.set(this.descriptionBox.getValue());
+            saveIdentityFields();
             this.minecraft.setScreen(new EntityConfigScreen(this));
         }).bounds(x - 20, y + 112, 115, 20).build());
 
         // Structure Category Config Button
         this.addRenderableWidget(Button.builder(Component.literal("Structure Config"), button -> {
-            Config.API_KEY.set(this.apiKeyBox.getValue());
-            Config.PLAYER_DISPLAY_NAME.set(this.displayNameBox.getValue());
-            Config.PLAYER_DESCRIPTION.set(this.descriptionBox.getValue());
+            saveIdentityFields();
             this.minecraft.setScreen(new StructureConfigScreen(this));
         }).bounds(x + 105, y + 112, 115, 20).build());
 
         // Save button
         this.addRenderableWidget(Button.builder(Component.literal("Save & Close"), button -> {
-            Config.API_KEY.set(this.apiKeyBox.getValue());
-            Config.PLAYER_DISPLAY_NAME.set(this.displayNameBox.getValue());
-            Config.PLAYER_DESCRIPTION.set(this.descriptionBox.getValue());
+            saveIdentityFields();
             this.minecraft.setScreen(this.previous);
         }).bounds(x, y + 147, 200, 20).build());
+    }
+
+    // Saves the API key locally (never networked - see Config.API_KEY) and the display
+    // name/description locally, then tells the server so it can broadcast the name/description
+    // to every other connected player - see PlayerIdentityUpdatePacket. Only sent when actually
+    // connected to a world/server; this screen is also reachable from the main menu.
+    private void saveIdentityFields() {
+        Config.API_KEY.set(this.apiKeyBox.getValue());
+        Config.PLAYER_DISPLAY_NAME.set(this.displayNameBox.getValue());
+        Config.PLAYER_DESCRIPTION.set(this.descriptionBox.getValue());
+
+        if (this.minecraft.getConnection() != null) {
+            NetworkHandler.INSTANCE.sendToServer(new PlayerIdentityUpdatePacket(
+                    this.displayNameBox.getValue(), this.descriptionBox.getValue()));
+        }
     }
 
     @Override

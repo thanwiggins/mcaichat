@@ -5,7 +5,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.NetworkEvent;
-import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.function.Supplier;
 
@@ -49,28 +48,9 @@ public class SyncNPCPacket {
                     entity.getPersistentData().merge(this.aiData);
                     entity.getPersistentData().putString("mcaichat_trades", this.tradesString);
                     entity.getPersistentData().putString("mcaichat_effects", this.effectsString);
-                    registerSocialCircle(entity);
                 }
             }
         });
         ctx.get().setPacketHandled(true);
-    }
-
-    // Registers a newly-synced NPC into its home's social circle right away, rather than
-    // relying solely on NameplateRenderer - which only runs once a player actually looks at
-    // this specific entity's nameplate. Without this, an NPC placed into an existing home
-    // wouldn't show up in its new housemates' social circles until someone happened to look at it.
-    private static void registerSocialCircle(Entity entity) {
-        CompoundTag data = entity.getPersistentData();
-        String name = data.getString("mcaichat_name");
-        if (name.isEmpty()) return;
-
-        String homeId = data.getString("mcaichat_home_id");
-        if (homeId.isEmpty() || homeId.equals("none")) return;
-
-        String type = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).getPath();
-        String personality = data.getString("mcaichat_personality");
-        String cap = PromptBuilder.getShortCapabilityString(entity);
-        ClientSocialManager.addCitizen(homeId, entity.getUUID(), name, type, personality, cap);
     }
 }

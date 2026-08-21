@@ -95,26 +95,31 @@ public class GeminiClient {
     // Called once a conversation ends: asks Gemini to list only the NEW memory items worth keeping
     // from the just-finished conversation, which get appended to the NPC's existing dossier below
     // (rather than asking the model to rewrite the whole thing), so old facts can't be dropped.
-    public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick) {
+    // The dossier is shared across every player (see MemoryUpdatePacket) - safe with no ownership
+    // check, since Gap 2's conversation-claim lock guarantees only one player is ever mid-summarize
+    // on a given NPC at a time.
+    public static void summarizeConversation(String apiKey, Entity entity, JsonArray historyArray, long currentTick, String playerDisplayName, String oldSummary) {
         CompletableFuture.runAsync(() -> {
             try {
-                ClientMemoryManager.EntityMemory oldMem = ClientMemoryManager.getMemory(entity.getUUID());
-
                 // Conversations this short are unlikely to contain anything worth remembering -
                 // skip the API call, but still record that a conversation happened just now.
                 if (historyArray.size() <= 4) {
-                    ClientMemoryManager.updateMemory(entity.getUUID(), oldMem != null ? oldMem.summary : "", currentTick);
+                    Minecraft.getInstance().execute(() ->
+                            NetworkHandler.INSTANCE.sendToServer(new MemoryUpdatePacket(entity.getId(), oldSummary, currentTick)));
                     return;
                 }
 
-                String memoryContext = oldMem != null ? oldMem.summary : "No prior memories.";
+                String memoryContext = oldSummary.isEmpty() ? "No prior memories." : oldSummary;
 
+                // Attributed by name so the merged summary can naturally read as e.g. "Steve
+                // mentioned finding a diamond mine" - letting the NPC later reference it to a
+                // different player entirely.
                 StringBuilder rawHistory = new StringBuilder();
                 for (int i = 0; i < historyArray.size(); i++) {
                     JsonObject msg = historyArray.get(i).getAsJsonObject();
                     String role = msg.get("role").getAsString();
                     String text = msg.getAsJsonArray("parts").get(0).getAsJsonObject().get("text").getAsString();
-                    rawHistory.append(role.equals("user") ? "Player: " : "AI: ").append(text).append("\n");
+                    rawHistory.append(role.equals("user") ? playerDisplayName + ": " : "AI: ").append(text).append("\n");
                 }
 
                 String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
@@ -163,14 +168,13 @@ public class GeminiClient {
                     // conversation was worth remembering - leave the dossier untouched in that case.
                     boolean hasNewItems = !newItems.isEmpty() && !newItems.equals("''");
 
-                    if (hasNewItems) {
-                        String updatedMemory = oldMem != null ? oldMem.summary + "\n" + newItems : newItems;
-                        ClientMemoryManager.updateMemory(entity.getUUID(), updatedMemory, currentTick);
-                    } else if (oldMem != null) {
-                        // Still bump the tick so "time since last conversation" reflects that this
-                        // chat happened, even though nothing new was added to the dossier.
-                        ClientMemoryManager.updateMemory(entity.getUUID(), oldMem.summary, currentTick);
-                    }
+                    // Still bump the tick even with nothing new to add, so "time since last
+                    // conversation" reflects that this chat happened.
+                    String updatedMemory = hasNewItems
+                            ? (oldSummary.isEmpty() ? newItems : oldSummary + "\n" + newItems)
+                            : oldSummary;
+                    Minecraft.getInstance().execute(() ->
+                            NetworkHandler.INSTANCE.sendToServer(new MemoryUpdatePacket(entity.getId(), updatedMemory, currentTick)));
                 }
             } catch (Exception e) {
                 System.err.println("[MC-AI Chat] Memory summarization failed: " + e.getMessage());

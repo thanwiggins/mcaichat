@@ -70,6 +70,9 @@ public class PlayerLocationCommands {
         if (event.getEntity() instanceof ServerPlayer player) {
             NetworkHandler.sendLocationsTo(player);
             NetworkHandler.sendLoreTo(player);
+            NetworkHandler.sendEffectiveConfigTo(player);
+            NetworkHandler.sendSocialRosterTo(player);
+            NetworkHandler.sendPlayerIdentitiesTo(player);
         }
     }
 

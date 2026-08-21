@@ -177,8 +177,26 @@ public class PromptBuilder {
         if (player == localPlayer) {
             String custom = Config.PLAYER_DISPLAY_NAME.get();
             if (custom != null && !custom.isBlank()) return custom.trim();
+        } else {
+            // Any other player's chosen name only ever reaches this client via
+            // PlayerIdentitySyncPacket - see PlayerIdentityCache.
+            PlayerIdentityCache.Entry identity = PlayerIdentityCache.get(player.getUUID());
+            if (identity != null && identity.displayName() != null && !identity.displayName().isBlank()) {
+                return identity.displayName().trim();
+            }
         }
         return player.getName().getString();
+    }
+
+    // Companion to getPlayerDisplayName - same local-fast-path/synced-cache split, for the
+    // description half of a player's chosen identity.
+    static String getPlayerDescription(Player player) {
+        Player localPlayer = Minecraft.getInstance().player;
+        if (player == localPlayer) {
+            return Config.PLAYER_DESCRIPTION.get();
+        }
+        PlayerIdentityCache.Entry identity = PlayerIdentityCache.get(player.getUUID());
+        return identity != null ? identity.description() : "";
     }
 
     static boolean knowsPlayerName(Entity target, Player player) {
@@ -543,19 +561,21 @@ public class PromptBuilder {
             tradingInfo = "\nTrades Available: Currently has no items in stock to trade.";
         }
 
-        ClientMemoryManager.EntityMemory mem = ClientMemoryManager.getMemory(target.getUUID());
+        // Shared across every player, fetched from the server the moment this conversation's
+        // claim was granted - see ConversationManager.currentMemorySummary/currentMemoryLastConvoTick.
         String memoryStr = "None (First interaction with the player)";
         String timeElapsedStr = "N/A";
 
-        if (mem != null) {
-            // A stored entry with an empty summary means you've spoken before but the conversation(s)
+        if (ConversationManager.currentMemoryLastConvoTick > 0) {
+            // An empty summary means someone's spoken with this NPC before, but the conversation(s)
             // were too short to have produced any memory items yet.
-            memoryStr = mem.summary.isEmpty() ? "None yet (spoken before, but nothing notable to remember)" : mem.summary;
+            String memSummary = ConversationManager.currentMemorySummary;
+            memoryStr = (memSummary == null || memSummary.isEmpty()) ? "None yet (spoken before, but nothing notable to remember)" : memSummary;
 
             // Measured in game ticks rather than real time, so "how long ago" reflects time spent
             // in-world rather than counting time while the game was closed.
             long currentTick = player.level().getGameTime();
-            long diffTicks = currentTick - mem.lastConvoTick;
+            long diffTicks = currentTick - ConversationManager.currentMemoryLastConvoTick;
 
             // 1 in-game hour = 1000 ticks, 1 in-game day = 24000 ticks
             long inGameHours = diffTicks / 1000;
@@ -586,7 +606,7 @@ public class PromptBuilder {
     // anonymized "The Player" line if a description was set - lets an NPC describe a stranger
     // in the third person before an introduction, and by name after one.
     private static String buildPlayerSocialLine(Player player, Entity target) {
-        String description = Config.PLAYER_DESCRIPTION.get();
+        String description = getPlayerDescription(player);
         boolean hasDescription = description != null && !description.isBlank();
 
         if (knowsPlayerName(target, player)) {
@@ -678,7 +698,7 @@ public class PromptBuilder {
         List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, dangerBox,
             entity -> entity != target
                 && entity != player
-                && !Config.isBlacklisted(entity)
+                && !EffectiveConfig.isBlacklisted(entity)
                 && (targetLiving == null || targetLiving.hasLineOfSight(entity))
         );
 
@@ -690,7 +710,7 @@ public class PromptBuilder {
         List<String> neutralNpcNames = new ArrayList<>();
 
         for (LivingEntity entity : nearbyEntities) {
-            if (Config.isWhitelisted(entity)) {
+            if (EffectiveConfig.isWhitelisted(entity)) {
                 // A fellow chattable NPC - judged by faction standing rather than the
                 // monster/creature/wildlife classifier below.
                 String npcName = entity.getPersistentData().getString("mcaichat_name");
@@ -711,11 +731,11 @@ public class PromptBuilder {
             boolean isCreature = false;
             boolean isWildlife = false;
 
-            if (Config.isInList(Config.CUSTOM_MONSTERS, registryName)) {
+            if (EffectiveConfig.isInList(EffectiveConfig.customMonsters, registryName)) {
                 isHostile = true;
-            } else if (Config.isInList(Config.CUSTOM_CREATURES, registryName)) {
+            } else if (EffectiveConfig.isInList(EffectiveConfig.customCreatures, registryName)) {
                 isCreature = true;
-            } else if (Config.isInList(Config.CUSTOM_WILDLIFE, registryName)) {
+            } else if (EffectiveConfig.isInList(EffectiveConfig.customWildlife, registryName)) {
                 isWildlife = true;
             } else {
                 // No explicit config override - guess from the entity's own vanilla category/interfaces

@@ -3,13 +3,22 @@ package com.thanwiggins.mcaichat;
 import net.minecraftforge.common.ForgeConfigSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.item.trading.Merchant;
 
 public class Config {
     public static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
     public static final ForgeConfigSpec SPEC;
+
+    // Hardcoded fallback for each list-type setting below, used only on a genuine dedicated
+    // server - Forge's CLIENT-type config this mod uses never reliably loads there, so rather
+    // than depend on unverified fallback behavior, dedicated servers just skip the config file
+    // entirely for these. Populated once, at the end of the static block, keyed by the same
+    // ConfigValue instances isInList/etc. are called with. See isDedicatedServerEnv/getEffectiveList.
+    private static final Map<ForgeConfigSpec.ConfigValue<String>, String> LIST_DEFAULTS = new HashMap<>();
     
     public static final ForgeConfigSpec.ConfigValue<String> API_KEY;
     public static final ForgeConfigSpec.ConfigValue<String> PLAYER_DISPLAY_NAME;
@@ -73,10 +82,39 @@ public class Config {
         BUILDER.pop();
 
         SPEC = BUILDER.build();
+
+        LIST_DEFAULTS.put(WHITELIST_ENTITIES, "minecraft:villager");
+        LIST_DEFAULTS.put(BLACKLIST_ENTITIES, "minecraft:armor_stand");
+        LIST_DEFAULTS.put(WANDERER_ENTITIES, "minecraft:wandering_trader");
+        LIST_DEFAULTS.put(CUSTOM_MONSTERS, "");
+        LIST_DEFAULTS.put(CUSTOM_CREATURES, "");
+        LIST_DEFAULTS.put(CUSTOM_WILDLIFE, "");
+        LIST_DEFAULTS.put(CIV_STRUCTURES, "");
+        LIST_DEFAULTS.put(NOMAD_STRUCTURES, "");
+        LIST_DEFAULTS.put(ADVENTURE_STRUCTURES, "");
+        LIST_DEFAULTS.put(IGNORED_STRUCTURES, "");
     }
-    
+
+    // True only in a real dedicated-server process (no client ever attached in this JVM) - this
+    // mod's config is Forge CLIENT-type, which doesn't reliably load there at all. See
+    // LIST_DEFAULTS/getEffectiveList.
+    public static boolean isDedicatedServerEnv() {
+        net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        return server != null && server.isDedicatedServer();
+    }
+
+    // The value isInList/etc. should actually use: the hardcoded default on a dedicated server,
+    // or the live config value everywhere else (singleplayer/LAN-host, where this process's own
+    // Config *is* the authoritative host config already). EffectiveConfigSyncPacket broadcasts
+    // exactly this same resolution to every connecting client so non-host clients stop reading
+    // their own local copy for these values.
+    public static String getEffectiveList(ForgeConfigSpec.ConfigValue<String> config) {
+        if (isDedicatedServerEnv()) return LIST_DEFAULTS.getOrDefault(config, "");
+        return config.get();
+    }
+
     public static boolean isInList(ForgeConfigSpec.ConfigValue<String> config, String id) {
-        String current = config.get();
+        String current = getEffectiveList(config);
         if (current == null || current.isEmpty()) return false;
         return Arrays.stream(current.split(",")).map(String::trim).anyMatch(s -> s.equalsIgnoreCase(id));
     }

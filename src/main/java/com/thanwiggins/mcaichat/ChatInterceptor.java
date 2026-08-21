@@ -70,13 +70,32 @@ public class ChatInterceptor {
         if (ConversationManager.activeEntity != null && !ConversationManager.activeEntity.getUUID().equals(targetEntity.getUUID())) {
             ConversationManager.endConversation(currentTick);
         }
-        if (ConversationManager.activeEntity == null) {
-            ConversationManager.startConversation(targetEntity, currentTick, false); // false: the player started this, not the NPC
-        }
 
         String entityName = targetEntity.getPersistentData().getString("mcaichat_name");
         if (entityName.isEmpty()) entityName = targetEntity.getDisplayName().getString();
 
+        if (ConversationManager.activeEntity == null) {
+            // Not already talking to this NPC - claim it from the server before generating any
+            // reply, so a second player can't silently steal the conversation out from under us
+            // (or vice versa). See ConversationClaimRequestPacket.
+            String finalEntityName = entityName;
+            ConversationManager.requestClaim(targetEntity,
+                    () -> {
+                        ConversationManager.commitConversation(targetEntity, currentTick, false); // false: the player started this, not the NPC
+                        sendClaimedMessage(player, targetEntity, message, apiKey, finalEntityName, currentTick);
+                    },
+                    () -> player.sendSystemMessage(Component.literal(
+                            "§c(Someone else is already talking to " + finalEntityName + ". Try again later.)")));
+            return;
+        }
+
+        sendClaimedMessage(player, targetEntity, message, apiKey, entityName, currentTick);
+    }
+
+    // The actual echo/prompt/Gemini-call part of sendPlayerMessage - split out so it can run
+    // either immediately (already own this NPC's conversation) or from a requestClaim onGranted
+    // callback (just claimed it).
+    private static void sendClaimedMessage(Player player, Entity targetEntity, String message, String apiKey, String entityName, long currentTick) {
         player.sendSystemMessage(Component.literal("§7[You] -> " + entityName + ": §f" + message));
 
         String systemPrompt = PromptBuilder.getSystemPrompt(player, targetEntity, false);
@@ -142,14 +161,14 @@ public class ChatInterceptor {
         HitResult hitResult = mc.hitResult;
         if (hitResult != null && hitResult.getType() == HitResult.Type.ENTITY) {
             Entity hitEntity = ((EntityHitResult) hitResult).getEntity();
-            if (Config.isWhitelisted(hitEntity) && !(hitEntity instanceof LivingEntity le && le.isSleeping())) {
+            if (EffectiveConfig.isWhitelisted(hitEntity) && !(hitEntity instanceof LivingEntity le && le.isSleeping())) {
                 return hitEntity;
             }
         }
 
         AABB searchBox = player.getBoundingBox().inflate(8.0D);
         List<Entity> nearbyEntities = player.level().getEntities(player, searchBox, e ->
-            Config.isWhitelisted(e) && player.hasLineOfSight(e) &&
+            EffectiveConfig.isWhitelisted(e) && player.hasLineOfSight(e) &&
             !(e instanceof LivingEntity le && le.isSleeping()) // asleep in bed - can't be woken up to chat
         );
 

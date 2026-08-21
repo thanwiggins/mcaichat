@@ -60,6 +60,11 @@ public class StructureConfigScreen extends Screen {
         int centerX = this.width / 2;
         int yStart = 40;
 
+        // Only the world host's config is ever actually enforced (see EffectiveConfig) - a
+        // joining player's own edits here would silently do nothing, so editing is disabled
+        // entirely for anyone who isn't running the integrated/dedicated server themselves.
+        boolean canEdit = net.minecraft.client.Minecraft.getInstance().isLocalServer();
+
         this.searchBox = new EditBox(this.font, centerX - 150, 15, 300, 20, Component.literal("Search or Add ID"));
         this.searchBox.setResponder(text -> {
             this.filteredStructures = allStructures.stream()
@@ -105,9 +110,11 @@ public class StructureConfigScreen extends Screen {
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleStructureCategory(structId);
-                this.init(); 
+                NetworkHandler.broadcastEffectiveConfig();
+                this.init();
             }).bounds(centerX + 10, yPos, 160, 20).build();
-            
+            cycleBtn.active = canEdit;
+
             this.addRenderableWidget(cycleBtn);
         }
 

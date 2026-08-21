@@ -46,6 +46,11 @@ public class EntityConfigScreen extends Screen {
         int centerX = this.width / 2;
         int yStart = 40;
 
+        // Only the world host's config is ever actually enforced (see EffectiveConfig) - a
+        // joining player's own edits here would silently do nothing, so editing is disabled
+        // entirely for anyone who isn't running the integrated/dedicated server themselves.
+        boolean canEdit = net.minecraft.client.Minecraft.getInstance().isLocalServer();
+
         this.searchBox = new EditBox(this.font, centerX - 150, 15, 300, 20, Component.literal("Search"));
         this.searchBox.setResponder(text -> {
             this.filteredEntities = allEntities.stream()
@@ -77,8 +82,10 @@ public class EntityConfigScreen extends Screen {
             boolean isWhitelisted = Config.isInList(Config.WHITELIST_ENTITIES, entityId);
             Button whitelistBtn = Button.builder(Component.literal(isWhitelisted ? "Chat: ON" : "Chat: OFF"), b -> {
                 Config.setCategory(Config.WHITELIST_ENTITIES, entityId, !isWhitelisted);
+                NetworkHandler.broadcastEffectiveConfig();
                 this.init();
             }).bounds(centerX - 40, yPos, 70, 20).build();
+            whitelistBtn.active = canEdit;
             this.addRenderableWidget(whitelistBtn);
 
             String currentCat = "";
@@ -95,8 +102,10 @@ public class EntityConfigScreen extends Screen {
 
             Button cycleBtn = Button.builder(Component.literal(currentCat), b -> {
                 cycleEntityCategory(entityId);
+                NetworkHandler.broadcastEffectiveConfig();
                 this.init();
             }).bounds(centerX + 35, yPos, 115, 20).build();
+            cycleBtn.active = canEdit;
             this.addRenderableWidget(cycleBtn);
 
             // --- Line 2: wanderer toggle + special instructions - only relevant for chattable
@@ -108,14 +117,17 @@ public class EntityConfigScreen extends Screen {
                 boolean isWanderer = Config.isInList(Config.WANDERER_ENTITIES, entityId);
                 Button wandererBtn = Button.builder(Component.literal(isWanderer ? "-Wander" : "+Wander"), b -> {
                     Config.setCategory(Config.WANDERER_ENTITIES, entityId, !isWanderer);
+                    NetworkHandler.broadcastEffectiveConfig();
                     this.init();
                 }).bounds(centerX - 150, line2Y, 60, 20).build();
+                wandererBtn.active = canEdit;
                 this.addRenderableWidget(wandererBtn);
 
                 EditBox instructionsBox = new EditBox(this.font, centerX - 85, line2Y, 235, 20, Component.literal("Special Instructions"));
                 instructionsBox.setMaxLength(300);
                 instructionsBox.setHint(Component.literal("Special instructions (optional)"));
                 instructionsBox.setValue(EntityInstructionManager.get(entityId));
+                instructionsBox.setEditable(canEdit);
                 // Saved on every keystroke, no re-init - this field has no other on-screen state
                 // that needs to stay in sync, so rebuilding the whole screen would only cost focus.
                 instructionsBox.setResponder(text -> EntityInstructionManager.set(entityId, text));

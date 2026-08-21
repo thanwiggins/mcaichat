@@ -17,7 +17,7 @@ public class NameplateRenderer {
     public static void onRenderNameplate(RenderNameTagEvent event) {
         Entity entity = event.getEntity();
         
-        if (Config.isWhitelisted(entity)) {
+        if (EffectiveConfig.isWhitelisted(entity)) {
             CompoundTag data = entity.getPersistentData();
             
             // If they are an AI character, color their nameplate
@@ -50,17 +50,6 @@ public class NameplateRenderer {
                     }
                 } else {
                     event.setContent(Component.literal(colorCode + name));
-                }
-                
-                // Seamlessly register them to their social circle if they have a home!
-                if (data.contains("mcaichat_home_id")) {
-                    String homeId = data.getString("mcaichat_home_id");
-                    if (!homeId.isEmpty() && !homeId.equals("none")) {
-                        String type = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(entity.getType()).getPath();
-                        String personality = data.getString("mcaichat_personality");
-                        String cap = PromptBuilder.getShortCapabilityString(entity);
-                        ClientSocialManager.addCitizen(homeId, entity.getUUID(), name, type, personality, cap);
-                    }
                 }
             }
         }

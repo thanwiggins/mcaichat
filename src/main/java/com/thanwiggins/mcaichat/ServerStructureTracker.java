@@ -139,9 +139,9 @@ public class ServerStructureTracker {
         }
     }
 
-    // Broadcasts an NPC's cause of death to every client so ClientSocialManager can mark it deceased.
-    // This has to run server-side because DamageSource attribution (who/what actually landed the
-    // killing blow) isn't reliably available on the client.
+    // Marks a whitelisted NPC's death in the server-authoritative social roster and broadcasts
+    // it. This has to run server-side because DamageSource attribution (who/what actually landed
+    // the killing blow) isn't reliably available on the client.
     @SubscribeEvent
     public static void onEntityDeath(LivingDeathEvent event) {
         LivingEntity entity = event.getEntity();
@@ -161,7 +161,18 @@ public class ServerStructureTracker {
                 cause = source.getLocalizedDeathMessage(entity).getString();
             }
 
-            NetworkHandler.INSTANCE.send(PacketDistributor.ALL.noArg(), new NpcDeathPacket(entity.getUUID(), cause));
+            // Mark it deceased in the server-authoritative roster and broadcast the change - see
+            // SocialRosterData/SocialRosterSyncPacket. A player who joins after this death still
+            // sees accurate status via their login dump.
+            if (entity.level() instanceof net.minecraft.server.level.ServerLevel serverLevel
+                    && SocialRosterData.get(serverLevel).markDeceased(entity.getUUID(), cause)) {
+                for (String homeId : SocialRosterData.get(serverLevel).all().keySet()) {
+                    if (SocialRosterData.get(serverLevel).getCitizens(homeId).containsKey(entity.getUUID())) {
+                        NetworkHandler.broadcastSocialRoster(serverLevel, homeId);
+                        break;
+                    }
+                }
+            }
         }
     }
 }

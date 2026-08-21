@@ -103,16 +103,16 @@ public class ClientLoreManager {
         // structure's lore in from another player - see LoreSyncPacket.
         if (loreMap.containsKey(structureId)) return;
 
-        if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return;
+        if (EffectiveConfig.isInList(EffectiveConfig.ignoredStructures, structureType)) return;
 
         boolean isCiv = false;
         boolean isNomad = false;
 
-        if (Config.isInList(Config.CIV_STRUCTURES, structureType)) {
+        if (EffectiveConfig.isInList(EffectiveConfig.civStructures, structureType)) {
             isCiv = true;
-        } else if (Config.isInList(Config.NOMAD_STRUCTURES, structureType)) {
+        } else if (EffectiveConfig.isInList(EffectiveConfig.nomadStructures, structureType)) {
             isNomad = true;
-        } else if (Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) {
+        } else if (EffectiveConfig.isInList(EffectiveConfig.adventureStructures, structureType)) {
             // Both remain false (Adventure Structure)
         } else if (structureType.startsWith("iceandfire:") && structureType.endsWith("_dragon_roost")) {
             // Dragon roosts are detected via the resident dragon's home position, not a registered Structure

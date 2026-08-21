@@ -10,7 +10,10 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public class NetworkHandler {
-    private static final String PROTOCOL_VERSION = "1";
+    // Bumped for the 1.0.2 multiplayer-support rework - the packet set and several existing
+    // packets' meaning changed enough that an old client/server pairing shouldn't be allowed to
+    // connect at all, rather than silently misbehaving.
+    private static final String PROTOCOL_VERSION = "2";
     
     public static final SimpleChannel INSTANCE = NetworkRegistry.newSimpleChannel(
         new ResourceLocation(GeminiMod.MODID, "main"),
@@ -37,11 +40,6 @@ public class NetworkHandler {
                 ConversationStatePacket::encode,
                 ConversationStatePacket::new,
                 ConversationStatePacket::handle);
-
-        INSTANCE.registerMessage(id++, NpcDeathPacket.class,
-                NpcDeathPacket::encode,
-                NpcDeathPacket::new,
-                NpcDeathPacket::handle);
 
         INSTANCE.registerMessage(id++, LocationSyncPacket.class,
                 LocationSyncPacket::encode,
@@ -77,6 +75,110 @@ public class NetworkHandler {
                 LoreReportPacket::encode,
                 LoreReportPacket::new,
                 LoreReportPacket::handle);
+
+        INSTANCE.registerMessage(id++, EffectiveConfigSyncPacket.class,
+                EffectiveConfigSyncPacket::encode,
+                EffectiveConfigSyncPacket::new,
+                EffectiveConfigSyncPacket::handle);
+
+        INSTANCE.registerMessage(id++, ConversationClaimRequestPacket.class,
+                ConversationClaimRequestPacket::encode,
+                ConversationClaimRequestPacket::new,
+                ConversationClaimRequestPacket::handle);
+
+        INSTANCE.registerMessage(id++, ConversationClaimResponsePacket.class,
+                ConversationClaimResponsePacket::encode,
+                ConversationClaimResponsePacket::new,
+                ConversationClaimResponsePacket::handle);
+
+        INSTANCE.registerMessage(id++, MemoryUpdatePacket.class,
+                MemoryUpdatePacket::encode,
+                MemoryUpdatePacket::new,
+                MemoryUpdatePacket::handle);
+
+        INSTANCE.registerMessage(id++, SocialRosterSyncPacket.class,
+                SocialRosterSyncPacket::encode,
+                SocialRosterSyncPacket::new,
+                SocialRosterSyncPacket::handle);
+
+        INSTANCE.registerMessage(id++, PlayerIdentityUpdatePacket.class,
+                PlayerIdentityUpdatePacket::encode,
+                PlayerIdentityUpdatePacket::new,
+                PlayerIdentityUpdatePacket::handle);
+
+        INSTANCE.registerMessage(id++, PlayerIdentitySyncPacket.class,
+                PlayerIdentitySyncPacket::encode,
+                PlayerIdentitySyncPacket::new,
+                PlayerIdentitySyncPacket::handle);
+    }
+
+    // Sent to a newly-joining player: every currently-online player's identity, read straight off
+    // each ServerPlayer's own persistent data. The new joiner's own identity (if they'd set one on
+    // a prior visit) reaches everyone else the same way, individually, right after.
+    public static void sendPlayerIdentitiesTo(ServerPlayer player) {
+        java.util.List<PlayerIdentitySyncPacket.Entry> entries = new java.util.ArrayList<>();
+        for (ServerPlayer online : player.getServer().getPlayerList().getPlayers()) {
+            String name = online.getPersistentData().getString("mcaichat_player_display_name");
+            String description = online.getPersistentData().getString("mcaichat_player_description");
+            if (!name.isEmpty() || !description.isEmpty()) {
+                entries.add(new PlayerIdentitySyncPacket.Entry(online.getUUID(), name, description));
+            }
+        }
+        if (!entries.isEmpty()) {
+            INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new PlayerIdentitySyncPacket(entries));
+        }
+
+        if (player.getPersistentData().contains("mcaichat_player_display_name")
+                || player.getPersistentData().contains("mcaichat_player_description")) {
+            String name = player.getPersistentData().getString("mcaichat_player_display_name");
+            String description = player.getPersistentData().getString("mcaichat_player_description");
+            INSTANCE.send(PacketDistributor.ALL.noArg(),
+                    new PlayerIdentitySyncPacket(java.util.List.of(new PlayerIdentitySyncPacket.Entry(player.getUUID(), name, description))));
+        }
+    }
+
+    // Single-home broadcast, used right after IdentityHandler settles a home or a resident dies.
+    public static void broadcastSocialRoster(ServerLevel level, String homeId) {
+        SocialRosterData data = SocialRosterData.get(level);
+        java.util.Map<String, java.util.Map<java.util.UUID, SocialRosterData.CitizenProfile>> single = new java.util.HashMap<>();
+        single.put(homeId, data.getCitizens(homeId));
+
+        CompoundTag tag = new CompoundTag();
+        tag.put("roster", SocialRosterData.rosterTag(single));
+        INSTANCE.send(PacketDistributor.ALL.noArg(), new SocialRosterSyncPacket(tag));
+    }
+
+    // Full dump sent on login, mirroring sendLocationsTo/sendLoreTo.
+    public static void sendSocialRosterTo(ServerPlayer player) {
+        CompoundTag tag = new CompoundTag();
+        tag.put("roster", SocialRosterData.rosterTag(SocialRosterData.get(player.serverLevel()).all()));
+        INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new SocialRosterSyncPacket(tag));
+    }
+
+    private static CompoundTag effectiveConfigTag() {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("whitelistEntities", Config.getEffectiveList(Config.WHITELIST_ENTITIES));
+        tag.putString("blacklistEntities", Config.getEffectiveList(Config.BLACKLIST_ENTITIES));
+        tag.putString("wandererEntities", Config.getEffectiveList(Config.WANDERER_ENTITIES));
+        tag.putString("customMonsters", Config.getEffectiveList(Config.CUSTOM_MONSTERS));
+        tag.putString("customCreatures", Config.getEffectiveList(Config.CUSTOM_CREATURES));
+        tag.putString("customWildlife", Config.getEffectiveList(Config.CUSTOM_WILDLIFE));
+        tag.putString("civStructures", Config.getEffectiveList(Config.CIV_STRUCTURES));
+        tag.putString("nomadStructures", Config.getEffectiveList(Config.NOMAD_STRUCTURES));
+        tag.putString("adventureStructures", Config.getEffectiveList(Config.ADVENTURE_STRUCTURES));
+        tag.putString("ignoredStructures", Config.getEffectiveList(Config.IGNORED_STRUCTURES));
+        return tag;
+    }
+
+    // Re-sent to everyone whenever the host saves a change in the config-edit screens
+    // (EntityConfigScreen/StructureConfigScreen) - the resolved value is the same for every
+    // player, so this is a plain broadcast, not per-player.
+    public static void broadcastEffectiveConfig() {
+        INSTANCE.send(PacketDistributor.ALL.noArg(), new EffectiveConfigSyncPacket(effectiveConfigTag()));
+    }
+
+    public static void sendEffectiveConfigTo(ServerPlayer player) {
+        INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new EffectiveConfigSyncPacket(effectiveConfigTag()));
     }
 
     public static void broadcastLocations(ServerLevel level) {
