@@ -521,20 +521,6 @@ public class PromptBuilder {
         else if (shortCap.equals("Warrior")) capability = "Trained Warrior - Has Fighting Abilities";
         else if (shortCap.equals("Merchant")) capability = "Merchant - Trades items with the player";
 
-        // Valarian Conquest citizens captured from a conquered settlement sit unclaimed
-        // ("claimed_citizen" absent/false, no team) until a player claims them - see
-        // ClaimCitizenProcedureProcedure in their mod. Overrides the normal capability line
-        // entirely while held; Trades Available below is unaffected either way, since released
-        // prisoners commonly take up a trading profession afterward.
-        boolean isValarianCitizen = targetRegistryName.equals("valarian_conquest:male_citizen") || targetRegistryName.equals("valarian_conquest:female_citizen");
-        if (isValarianCitizen) {
-            if (!data.getBoolean("claimed_citizen")) {
-                capability = "Prisoner - Held captive in this place";
-            } else {
-                capability = "Released Prisoner - Released from captivity in this place by " + resolveCitizenOwnerName(target, data) + ".";
-            }
-        }
-
         String sentiment = isMonster ? "Hostile toward the player (The player is a dangerous enemy that must be eliminated)" : "Friendly and welcoming toward the player";
 
         if (isValarianFighter) {
@@ -586,24 +572,6 @@ public class PromptBuilder {
 
         return String.format("Name: %s\nEntity Type: %s\nPersonality: %s\nSentiment: %s\nCapabilities: %s%s\nMemory: %s\nTime Since Last Conversation: %s",
                 name, entityType, personality, sentiment, capability, tradingInfo, memoryStr, timeElapsedStr);
-    }
-
-    // Valarian Conquest stores the claiming player's UUID as a plain string ("citizen_owner"),
-    // not a UUID-typed tag like this mod's own mcaichat_directive_player - same "a player" fallback
-    // as buildDirectiveInstruction if the owner isn't online or this NPC hasn't been told their name.
-    private static String resolveCitizenOwnerName(Entity target, CompoundTag data) {
-        String ownerId = data.getString("citizen_owner");
-        if (!ownerId.isEmpty()) {
-            try {
-                Player owner = target.level().getPlayerByUUID(UUID.fromString(ownerId));
-                if (owner != null && knowsPlayerName(target, owner)) {
-                    return getPlayerDisplayName(owner);
-                }
-            } catch (IllegalArgumentException ignored) {
-                // Malformed/unexpected UUID string - fall through to the generic fallback.
-            }
-        }
-        return "a player";
     }
 
     // The player's own line (if this NPC knows their name/description - see
