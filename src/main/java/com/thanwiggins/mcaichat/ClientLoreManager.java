@@ -131,6 +131,12 @@ public class ClientLoreManager {
             String category = "civilization";
             String name = NPCData.getRandomRealm(new java.util.Random());
             addLore(structureId, name, "Discovering the history of this place...", category, structureType);
+
+            // Independent of the lore-report flow below (which only fires once Gemini succeeds) -
+            // the auto-waypoint feature needs this name right away, not after (or never, on
+            // failure/no API key). See CivNameReportPacket/PlayerCivWaypointData.
+            NetworkHandler.INSTANCE.sendToServer(new CivNameReportPacket(structureId, name));
+
             String apiKey = Config.API_KEY.get();
             if (apiKey != null && !apiKey.isEmpty()) {
                 GeminiClient.generateStructureLore(apiKey, structureId, formattedType, name, category, formattedBiome);

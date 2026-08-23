@@ -38,6 +38,8 @@ public class ServerStructureTracker {
                 String foundId = "none";
                 String foundType = "none";
                 String foundBiome = "unknown";
+                boolean foundInside = false; // player is actually standing inside foundId's bounds, not just nearby
+                BlockPos foundPos = null;
 
                 double closestDistSqr = 62500; // 250 blocks, squared - structures farther than this are ignored
                 int radiusChunks = 16; // scans a 33x33 chunk (528x528 block) area around the player
@@ -56,7 +58,8 @@ public class ServerStructureTracker {
                                     double distSqr = playerPos.distSqr(startPos);
 
                                     // Standing inside a structure always wins, even over one whose center is closer
-                                    double actualDist = start.getBoundingBox().isInside(playerPos) ? 0 : distSqr;
+                                    boolean isInside = start.getBoundingBox().isInside(playerPos);
+                                    double actualDist = isInside ? 0 : distSqr;
 
                                     if (actualDist <= closestDistSqr) {
                                         closestDistSqr = actualDist;
@@ -66,6 +69,8 @@ public class ServerStructureTracker {
                                             foundType = key.toString();
                                             foundId = foundType + "_" + start.getChunkPos().x + "_" + start.getChunkPos().z;
                                             foundBiome = serverLevel.getBiome(startPos).unwrapKey().map(k -> k.location().getPath()).orElse("unknown");
+                                            foundInside = isInside;
+                                            foundPos = startPos;
                                         }
                                     }
                                 }
@@ -82,9 +87,27 @@ public class ServerStructureTracker {
                     foundId = roost.id();
                     foundType = roost.type();
                     foundBiome = roost.biome();
+                    foundInside = roost.distSqr() <= 400; // matches the ~20 block "treat as inside" radius DragonRoostFinder gives roosts
+                    foundPos = roost.pos();
                 }
 
                 NetworkHandler.INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new StructurePacket(foundId, foundType, foundBiome));
+
+                // Auto-waypoint: only fires once the player has actually entered a civilization's
+                // bounds (not merely come within the 250-block range above), and only the first
+                // time for this player - see PlayerCivWaypointData. The name comes from
+                // CivNameReportPacket, sent independently by the client the moment it assigns one
+                // (see ClientLoreManager.onStructureEntered) - if it hasn't arrived yet this tick,
+                // this simply retries next tick with no extra bookkeeping needed.
+                if (foundInside && foundPos != null && isCivType(foundType)) {
+                    PlayerCivWaypointData civData = PlayerCivWaypointData.get(serverLevel);
+                    civData.recordPosition(foundId, foundPos);
+
+                    String civName = civData.getName(foundId);
+                    if (civName != null && civData.markVisited(player.getUUID(), foundId)) {
+                        NetworkHandler.sendCivWaypointTo(player, serverLevel, foundId, civData.get(foundId));
+                    }
+                }
 
                 net.minecraft.world.phys.AABB searchBox = player.getBoundingBox().inflate(16.0D); 
                 java.util.List<net.minecraft.world.entity.Entity> nearbyNPCs = serverLevel.getEntities(player, searchBox, e -> Config.isWhitelisted(e));
@@ -137,6 +160,22 @@ public class ServerStructureTracker {
                 }
             }
         }
+    }
+
+    // Server-authoritative mirror of ClientLoreManager.onStructureEntered's civilization
+    // classification (identical rule set, but reading Config directly rather than the client's
+    // synced EffectiveConfig mirror - see Config.getEffectiveList) - needed here because the
+    // auto-waypoint "actually visited" trigger has to be decided server-side, unlike lore naming.
+    private static boolean isCivType(String structureType) {
+        if (Config.isInList(Config.IGNORED_STRUCTURES, structureType)) return false;
+        if (Config.isInList(Config.CIV_STRUCTURES, structureType)) return true;
+        if (Config.isInList(Config.NOMAD_STRUCTURES, structureType)
+                || Config.isInList(Config.ADVENTURE_STRUCTURES, structureType)) return false;
+        if (structureType.startsWith("iceandfire:") && structureType.endsWith("_dragon_roost")) return false;
+
+        return structureType.contains("village") || structureType.contains("city") ||
+                structureType.contains("bastion") || structureType.contains("fortress") ||
+                structureType.contains("towns_and_towers") || structureType.contains("valarian_conquest");
     }
 
     // Marks a whitelisted NPC's death in the server-authoritative social roster and broadcasts

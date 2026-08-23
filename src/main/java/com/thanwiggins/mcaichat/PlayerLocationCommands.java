@@ -73,6 +73,7 @@ public class PlayerLocationCommands {
             NetworkHandler.sendEffectiveConfigTo(player);
             NetworkHandler.sendSocialRosterTo(player);
             NetworkHandler.sendPlayerIdentitiesTo(player);
+            NetworkHandler.sendCivWaypointsTo(player);
         }
     }
 

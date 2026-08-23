@@ -110,6 +110,16 @@ public class NetworkHandler {
                 PlayerIdentitySyncPacket::encode,
                 PlayerIdentitySyncPacket::new,
                 PlayerIdentitySyncPacket::handle);
+
+        INSTANCE.registerMessage(id++, CivNameReportPacket.class,
+                CivNameReportPacket::encode,
+                CivNameReportPacket::new,
+                CivNameReportPacket::handle);
+
+        INSTANCE.registerMessage(id++, CivWaypointSyncPacket.class,
+                CivWaypointSyncPacket::encode,
+                CivWaypointSyncPacket::new,
+                CivWaypointSyncPacket::handle);
     }
 
     // Sent to a newly-joining player: every currently-online player's identity, read straight off
@@ -220,5 +230,48 @@ public class NetworkHandler {
         entryTag.putString("type", entry.type());
         entryTag.putString("fullKey", entry.fullKey());
         return entryTag;
+    }
+
+    private static CompoundTag civWaypointEntryTag(String structureId, PlayerCivWaypointData.CivEntry entry, ServerLevel dimensionLevel) {
+        CompoundTag entryTag = new CompoundTag();
+        entryTag.putString("id", structureId);
+        entryTag.putString("name", entry.name());
+        entryTag.putString("dimension", dimensionLevel.dimension().location().toString());
+        entryTag.putInt("x", entry.pos().getX());
+        entryTag.putInt("y", entry.pos().getY());
+        entryTag.putInt("z", entry.pos().getZ());
+        return entryTag;
+    }
+
+    // Single-entry push right after ServerStructureTracker credits a player with a brand-new
+    // visit - see PlayerCivWaypointData.markVisited.
+    public static void sendCivWaypointTo(ServerPlayer player, ServerLevel level, String structureId, PlayerCivWaypointData.CivEntry entry) {
+        CompoundTag tag = new CompoundTag();
+        ListTag list = new ListTag();
+        list.add(civWaypointEntryTag(structureId, entry, level));
+        tag.put("waypoints", list);
+        INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new CivWaypointSyncPacket(tag));
+    }
+
+    // Full dump sent on login, mirroring sendLoreTo/sendLocationsTo - only this player's own
+    // visited set, scoped to whichever dimension's PlayerCivWaypointData they're currently in
+    // (same per-dimension-storage simplification StructureLoreData already accepts).
+    public static void sendCivWaypointsTo(ServerPlayer player) {
+        ServerLevel level = player.serverLevel();
+        PlayerCivWaypointData data = PlayerCivWaypointData.get(level);
+        java.util.Set<String> visitedIds = data.getVisited(player.getUUID());
+        if (visitedIds.isEmpty()) return;
+
+        ListTag list = new ListTag();
+        for (String structureId : visitedIds) {
+            PlayerCivWaypointData.CivEntry entry = data.get(structureId);
+            if (entry == null || entry.name() == null || entry.pos() == null) continue;
+            list.add(civWaypointEntryTag(structureId, entry, level));
+        }
+        if (list.isEmpty()) return;
+
+        CompoundTag tag = new CompoundTag();
+        tag.put("waypoints", list);
+        INSTANCE.send(PacketDistributor.PLAYER.with(() -> player), new CivWaypointSyncPacket(tag));
     }
 }

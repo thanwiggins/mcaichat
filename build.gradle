@@ -70,6 +70,10 @@ repositories {
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
     implementation fg.deobf("blank:structurify-forge:2.0.28+mc1.20.1")
+
+    // Soft/optional dependency - never declared in mods.toml, never required at runtime. Only
+    // XaeroWaypointSupport references its classes, guarded behind ModList.isLoaded("xaerominimap").
+    compileOnly fg.deobf("blank:xaerominimap-forge:1.20.1-26.4.2")
 }
 
 tasks.named('processResources', ProcessResources).configure {
