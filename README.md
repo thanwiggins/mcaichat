@@ -80,8 +80,11 @@ know or care about, and lets you actually act on the world it describes.
   and soldiers get faction-aware sentiment, nameplate colors, and danger-scan callouts.
 - **[Towns and Towers](https://www.curseforge.com/minecraft/mc-mods/towns-and-towers)** - its village
   and pillager outpost variants are recognized as civilizations and covered by the outpost spawn cap.
+- **[Xaero's Minimap](https://www.curseforge.com/minecraft/mc-mods/xaeros-minimap)** - the first time
+  you set foot in a civilization, a waypoint for it is added to your waypoint list (hidden from the
+  map by default) so you can find your way back later.
 
-All four are no-ops if not installed - nothing above requires them.
+All five are no-ops if not installed - nothing above requires them.
 
 ### In-game config screens
 No config files to hand-edit for day-to-day tuning:
